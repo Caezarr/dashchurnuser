@@ -351,7 +351,7 @@ def create_app(conn, client, auth_token=None, html_path=None):
                         "last_lf_sync":get_meta(conn,"last_lf_sync","never"),
                         "auth_required":bool(auth_token)})
 
-    @app.route("/sync", methods=["POST"])
+    @app.route("/analytics/sync", methods=["POST"])
     @auth
     def do_sync():
         period = (request.json or {}).get("period","30d")
@@ -360,7 +360,7 @@ def create_app(conn, client, auth_token=None, html_path=None):
         result["langfuse_models"] = sync_langfuse_models(conn, days=int(period.rstrip("d")) if period.endswith("d") else 30)
         return jsonify(result)
 
-    @app.route("/requests")
+    @app.route("/analytics/requests")
     @auth
     def get_requests():
         q,p = "SELECT * FROM requests WHERE 1=1", []
@@ -493,7 +493,7 @@ def create_app(conn, client, auth_token=None, html_path=None):
         return jsonify({"actif": actif, "risque": risque, "churne": churne,
                         "total": len(rows)})
 
-    @app.route("/export/csv")
+    @app.route("/analytics/export/csv")
     @auth
     def export_csv():
         s = since(90)
