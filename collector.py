@@ -463,10 +463,18 @@ def create_app(conn, client, auth_token=None, html_path=None):
         s = since()
         fmt = {"hour":"%Y-%m-%dT%H","day":"%Y-%m-%d","week":"%Y-W%W"}.get(
               request.args.get("granularity","day"),"%Y-%m-%d")
-        return jsonify(R(conn.execute(
-            f"SELECT strftime('{fmt}',timestamp) as period, COUNT(*) as requests, "
-            f"SUM(total_tokens) as tokens, SUM(cost) as cost "
-            f"FROM requests WHERE timestamp>=? GROUP BY period ORDER BY period", [s]).fetchall()))
+        s_date = s[:10]
+        rows = conn.execute(
+            f"SELECT date as period, SUM(request_count) as requests, "
+            f"SUM(total_tokens) as tokens, SUM(cost) as total_cost "
+            f"FROM lf_model_daily WHERE date>=? GROUP BY date ORDER BY date", [s_date]).fetchall()
+        if not rows:
+            # fallback: count rows per day from requests table
+            rows = conn.execute(
+                f"SELECT strftime('{fmt}',timestamp) as period, COUNT(*) as requests, "
+                f"SUM(total_tokens) as tokens, SUM(cost) as cost "
+                f"FROM requests WHERE timestamp>=? GROUP BY period ORDER BY period", [s]).fetchall()
+        return jsonify(R(rows))
 
     @app.route("/analytics/churn-risk")
     @auth
