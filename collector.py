@@ -17,7 +17,11 @@ Deploy:
 """
 
 import argparse, json, os, sqlite3, sys, time, threading, logging, socket
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+def utcnow():
+    """Timezone-aware UTC datetime (replaces deprecated utcnow())."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 from pathlib import Path
 from functools import wraps
 
@@ -119,7 +123,7 @@ class RequestyClient:
         })
 
     def keys(self):
-        r = self.s.get(f"{API_BASE}/v1/manage/apikey", timeout=30)
+        r = self.s.get(f"{API_BASE}/v1/manage/apikey", timeout=60)
         r.raise_for_status()
         return r.json().get("keys", [])
 
@@ -127,7 +131,7 @@ class RequestyClient:
         r = self.s.get(
             f"{API_BASE}/v1/manage/apikey/{key_id}/usage",
             json={"start": start, "end": end, "resolution": "day"},
-            timeout=30
+            timeout=60
         )
         r.raise_for_status()
         return r.json().get("usage", {})
@@ -146,11 +150,11 @@ def sync_requesty(conn, client, period="30d"):
         -> requesty_daily (one row per key+date)
     """
     days  = min(int(period.rstrip("d")) if period.endswith("d") else 30, 90)
-    end   = datetime.utcnow()
+    end   = utcnow()
     start = end - timedelta(days=days)
     s_str = start.strftime("%Y-%m-%dT%H:%M:%SZ")
     e_str = end.strftime("%Y-%m-%dT%H:%M:%SZ")
-    now   = datetime.utcnow().isoformat()
+    now   = utcnow().isoformat()
 
     keys = client.keys()
     rows = []
@@ -190,9 +194,9 @@ def sync_requesty(conn, client, period="30d"):
 # ---------------------------------------------------------------------------
 # Sync: Langfuse /traces -> lf_users + lf_sessions
 # ---------------------------------------------------------------------------
-def sync_lf_users(conn):
+def sync_lf_users(conn, days=30):
     """
-    Paginate Langfuse /api/public/traces.
+    Paginate Langfuse /api/public/traces (last N days only).
     Aggregates first_seen/last_seen/trace_count per user_id.
     Also captures session data from trace.sessionId.
     """
@@ -202,7 +206,8 @@ def sync_lf_users(conn):
 
     session = requests.Session()
     session.auth = (LF_PUBLIC, LF_SECRET)
-    now   = datetime.utcnow().isoformat()
+    cutoff = (utcnow() - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now   = utcnow().isoformat()
     page  = 1
     limit = 100
     users    = {}  # user_id -> {first, last, count}
@@ -213,16 +218,23 @@ def sync_lf_users(conn):
             r = session.get(
                 f"{LF_HOST}/api/public/traces",
                 params={"page": page, "limit": limit},
-                timeout=30
+                timeout=60
             )
+            log.info(f"  Langfuse users: page {page} ({r.status_code})")
             r.raise_for_status()
             traces = r.json().get("data", [])
             if not traces:
                 break
 
+            stop = False
             for t in traces:
                 uid = t.get("userId")
                 ts  = t.get("timestamp", "")
+                # Langfuse retourne les traces les plus récentes en premier
+                # On s'arrête quand on dépasse le cutoff
+                if ts and ts[:19] < cutoff[:19]:
+                    stop = True
+                    break
                 if uid:
                     if uid not in users:
                         users[uid] = {"first": ts, "last": ts, "count": 0}
@@ -239,9 +251,10 @@ def sync_lf_users(conn):
                         sessions[sid]["created_at"] = ts
                     sessions[sid]["count"] += 1
 
-            if len(traces) < limit:
+            if stop or len(traces) < limit:
                 break
             page += 1
+            time.sleep(0.3)  # be gentle
 
         except Exception as e:
             log.error(f"  Langfuse users error (page {page}): {e}")
@@ -285,11 +298,17 @@ def sync_lf_models(conn, days=30):
 
     session   = requests.Session()
     session.auth = (LF_PUBLIC, LF_SECRET)
-    cutoff    = (datetime.utcnow() - timedelta(days=days)).isoformat()
-    now       = datetime.utcnow().isoformat()
+    cutoff    = (utcnow() - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now       = utcnow().isoformat()
     page      = 1
     limit     = 50
     total_obs = 0
+
+    # Clear existing records for this period before re-fetching — prevents
+    # double-counting on repeated syncs (the ON CONFLICT +accumulate pattern
+    # is only safe within a single sync run, not across multiple runs).
+    conn.execute("DELETE FROM model_daily WHERE date >= ?", [cutoff[:10]])
+    conn.commit()
 
     while True:
         # Retry loop for 5xx errors
@@ -304,7 +323,7 @@ def sync_lf_models(conn, days=30):
                         "limit": limit,
                         "fromStartTime": cutoff,
                     },
-                    timeout=30
+                    timeout=60
                 )
                 if r.status_code in (502, 503):
                     wait = (attempt + 1) * 3
@@ -411,7 +430,7 @@ def create_app(conn, client, auth_token=None, html_path=None):
             days = int(period[:-1])
         else:
             days = default_days
-        return (datetime.utcnow() - timedelta(days=days)).isoformat()
+        return (utcnow() - timedelta(days=days)).isoformat()
 
     def since_date(default_days=30):
         return since(default_days)[:10]
@@ -449,10 +468,22 @@ def create_app(conn, client, auth_token=None, html_path=None):
         days   = int(period[:-1]) if period.endswith("d") else 30
 
         result = {}
-        result["requesty"]      = sync_requesty(conn, client, period)
-        result["lf_users"]      = sync_lf_users(conn)
-        result["lf_models"]     = sync_lf_models(conn, days=days)
-        result["synced_at"]     = datetime.utcnow().isoformat()
+        try:
+            result["requesty"] = sync_requesty(conn, client, period)
+        except Exception as e:
+            log.error(f"Requesty sync error: {e}")
+            result["requesty"] = {"error": str(e)}
+        try:
+            result["lf_users"] = sync_lf_users(conn)
+        except Exception as e:
+            log.error(f"Langfuse users sync error: {e}")
+            result["lf_users"] = {"error": str(e)}
+        try:
+            result["lf_models"] = sync_lf_models(conn, days=days)
+        except Exception as e:
+            log.error(f"Langfuse models sync error: {e}")
+            result["lf_models"] = {"error": str(e)}
+        result["synced_at"] = utcnow().isoformat()
         return jsonify(result)
 
     # ── Overview KPIs ─────────────────────────────────────────────────────
@@ -537,8 +568,9 @@ def create_app(conn, client, auth_token=None, html_path=None):
             SELECT user_id, first_seen, last_seen, total_traces
             FROM lf_users ORDER BY last_seen DESC
         """).fetchall()
-        now    = datetime.utcnow()
-        actif, risque, churne = [], [], []
+        now    = utcnow()
+        MIN_TRACES = 5
+        actif, inactif, risque, churne, insuffisant = [], [], [], [], []
         for r in rows:
             d = dict(r)
             try:
@@ -547,17 +579,28 @@ def create_app(conn, client, auth_token=None, html_path=None):
                 days_ago = 999
             d["days_since_last"] = days_ago
             traces = d.get("total_traces") or 0
-            if traces < 15 and days_ago > 5:
-                d["status"] = "churne"; churne.append(d)
-            elif traces < 15:
+            if traces < MIN_TRACES:
+                # Pas assez de données pour classifier
+                d["status"] = "insuffisant"; insuffisant.append(d)
+            elif days_ago <= 3:
+                # Actif dans les 3 derniers jours
+                d["status"] = "actif"; actif.append(d)
+            elif days_ago <= 7:
+                # Actif dans les 7 derniers jours → inactif
+                d["status"] = "inactif"; inactif.append(d)
+            elif days_ago <= 10:
+                # Zone grise 7–10 jours
                 d["status"] = "risque"; risque.append(d)
             else:
-                d["status"] = "actif";  actif.append(d)
+                # Pas actif depuis plus de 10 jours → churné
+                d["status"] = "churne"; churne.append(d)
         return jsonify({
-            "actif":  actif,
-            "risque": risque,
-            "churne": churne,
-            "total":  len(rows),
+            "actif":       actif,
+            "inactif":     inactif,
+            "risque":      risque,
+            "churne":      churne,
+            "insuffisant": insuffisant,
+            "total":       len(rows),
         })
 
     # ── By user (raw list) ────────────────────────────────────────────────
@@ -568,7 +611,7 @@ def create_app(conn, client, auth_token=None, html_path=None):
             SELECT user_id, first_seen, last_seen, total_traces, updated_at
             FROM lf_users ORDER BY last_seen DESC
         """).fetchall()
-        now    = datetime.utcnow()
+        now    = utcnow()
         result = []
         for r in rows:
             d = dict(r)
