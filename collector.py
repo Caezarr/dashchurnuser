@@ -210,17 +210,21 @@ def sync_lf_users(conn, days=30):
     now   = utcnow().isoformat()
     page  = 1
     limit = 100
+    # Safety cap: max pages to fetch per sync to avoid hammering a self-hosted
+    # Langfuse that has no server-side date filter on /traces.
+    # At 100 traces/page, 50 pages = 5 000 traces max — enough for 30 days.
+    MAX_PAGES = 50
     users    = {}  # user_id -> {first, last, count}
     sessions = {}  # session_id -> {user_id, created_at, count}
 
-    while True:
+    while page <= MAX_PAGES:
         try:
             r = session.get(
                 f"{LF_HOST}/api/public/traces",
                 params={"page": page, "limit": limit},
                 timeout=60
             )
-            log.info(f"  Langfuse users: page {page} ({r.status_code})")
+            log.info(f"  Langfuse users: page {page}/{MAX_PAGES} ({r.status_code})")
             r.raise_for_status()
             traces = r.json().get("data", [])
             if not traces:
@@ -230,8 +234,9 @@ def sync_lf_users(conn, days=30):
             for t in traces:
                 uid = t.get("userId")
                 ts  = t.get("timestamp", "")
-                # Langfuse retourne les traces les plus récentes en premier
-                # On s'arrête quand on dépasse le cutoff
+                # Langfuse retourne les traces les plus récentes en premier.
+                # On s'arrête dès qu'on dépasse le cutoff pour ne pas
+                # parcourir l'historique complet (protection Langfuse).
                 if ts and ts[:19] < cutoff[:19]:
                     stop = True
                     break
@@ -254,7 +259,7 @@ def sync_lf_users(conn, days=30):
             if stop or len(traces) < limit:
                 break
             page += 1
-            time.sleep(0.3)  # be gentle
+            time.sleep(0.5)  # be gentle with self-hosted instance
 
         except Exception as e:
             log.error(f"  Langfuse users error (page {page}): {e}")
@@ -461,29 +466,38 @@ def create_app(conn, client, auth_token=None, html_path=None):
         })
 
     # ── Sync ─────────────────────────────────────────────────────────────
+    _sync_lock = threading.Lock()
+
     @app.route("/analytics/sync", methods=["POST"])
     @auth
     def do_sync():
+        # Prevent concurrent syncs — if one is already running, reject
+        if not _sync_lock.acquire(blocking=False):
+            return jsonify({"error": "Sync déjà en cours, réessayez dans quelques secondes"}), 429
+
         period = (request.json or {}).get("period", "30d")
         days   = int(period[:-1]) if period.endswith("d") else 30
 
         result = {}
         try:
-            result["requesty"] = sync_requesty(conn, client, period)
-        except Exception as e:
-            log.error(f"Requesty sync error: {e}")
-            result["requesty"] = {"error": str(e)}
-        try:
-            result["lf_users"] = sync_lf_users(conn)
-        except Exception as e:
-            log.error(f"Langfuse users sync error: {e}")
-            result["lf_users"] = {"error": str(e)}
-        try:
-            result["lf_models"] = sync_lf_models(conn, days=days)
-        except Exception as e:
-            log.error(f"Langfuse models sync error: {e}")
-            result["lf_models"] = {"error": str(e)}
-        result["synced_at"] = utcnow().isoformat()
+            try:
+                result["requesty"] = sync_requesty(conn, client, period)
+            except Exception as e:
+                log.error(f"Requesty sync error: {e}")
+                result["requesty"] = {"error": str(e)}
+            try:
+                result["lf_users"] = sync_lf_users(conn, days=days)
+            except Exception as e:
+                log.error(f"Langfuse users sync error: {e}")
+                result["lf_users"] = {"error": str(e)}
+            try:
+                result["lf_models"] = sync_lf_models(conn, days=days)
+            except Exception as e:
+                log.error(f"Langfuse models sync error: {e}")
+                result["lf_models"] = {"error": str(e)}
+            result["synced_at"] = utcnow().isoformat()
+        finally:
+            _sync_lock.release()
         return jsonify(result)
 
     # ── Overview KPIs ─────────────────────────────────────────────────────
