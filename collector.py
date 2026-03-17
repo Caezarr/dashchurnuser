@@ -252,6 +252,55 @@ def sync_langfuse(conn):
     log.info(f"  Langfuse: {len(users)} users, {len(sessions)} sessions synced")
     return len(users)
 
+def sync_requesty_models(conn, client, period="30d"):
+    """Fetch per-model breakdown from Requesty (group_by=model_requested) -> lf_model_daily."""
+    days = int(period.rstrip("d")) if period.endswith("d") else 30
+    end_dt   = datetime.utcnow()
+    start_dt = end_dt - timedelta(days=days)
+    start    = start_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    end      = end_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    now      = datetime.utcnow().isoformat()
+    agg      = {}  # (model, date) -> {model, date, input, output, total, cost, count}
+    try:
+        keys = client.keys()
+        for k in keys:
+            kid = k.get("id")
+            try:
+                r = client._get(f"/v1/manage/apikey/{kid}/usage",
+                                json={"start": start, "end": end,
+                                      "resolution": "day", "group_by": "model_requested"})
+                usage = r.get("usage", {})
+                for date_str, day_data in usage.items():
+                    for g in day_data.get("grouped_data", []):
+                        model = (g.get("group_by_values") or {}).get("model") or "unknown"
+                        key   = f"rq|{model}|{date_str}"
+                        if key not in agg:
+                            agg[key] = {"model": model, "date": date_str,
+                                        "input": 0, "output": 0, "total": 0,
+                                        "cost": 0.0, "count": 0}
+                        agg[key]["input"]  += int(g.get("input_tokens", 0))
+                        agg[key]["output"] += int(g.get("output_tokens", 0))
+                        agg[key]["total"]  += int(g.get("total_tokens") or g.get("tokens") or 0)
+                        agg[key]["cost"]   += float(g.get("spend", 0))
+                        agg[key]["count"]  += int(g.get("requests", 1))
+            except Exception as e:
+                log.warning(f"  Requesty model sync key {kid}: {e}")
+        if agg:
+            conn.executemany("""INSERT OR REPLACE INTO lf_model_daily
+                (id, date, model, input_tokens, output_tokens, total_tokens, cost, request_count, updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?)""",
+                [(k, v["date"], v["model"], v["input"], v["output"],
+                  v["total"], v["cost"], v["count"], now)
+                 for k, v in agg.items()])
+            conn.commit()
+        n_models = len(set(v["model"] for v in agg.values()))
+        log.info(f"  Requesty models: {n_models} models, {len(agg)} model/day records synced")
+        return n_models
+    except Exception as e:
+        log.error(f"Requesty models sync error: {e}")
+        return 0
+
+
 def sync_langfuse_models(conn, days=30):
     """Aggregate Langfuse observations by (model, date)  lf_model_daily."""
     if not LF_PUBLIC or not LF_SECRET:
@@ -356,8 +405,9 @@ def create_app(conn, client, auth_token=None, html_path=None):
     def do_sync():
         period = (request.json or {}).get("period","30d")
         result = sync(client, conn, period)
-        result["langfuse_users"] = sync_langfuse(conn)
-        result["langfuse_models"] = sync_langfuse_models(conn, days=int(period.rstrip("d")) if period.endswith("d") else 30)
+        result["langfuse_users"]   = sync_langfuse(conn)
+        result["requesty_models"]  = sync_requesty_models(conn, client, period)
+        result["langfuse_models"]  = sync_langfuse_models(conn, days=int(period.rstrip("d")) if period.endswith("d") else 30)
         return jsonify(result)
 
     @app.route("/analytics/requests")
@@ -584,6 +634,7 @@ def main():
                 try:
                     r = sync(client, conn, args.period)
                     sync_langfuse(conn)
+                    sync_requesty_models(conn, client, args.period)
                     sync_langfuse_models(conn, days=int(args.period.rstrip("d")) if args.period.endswith("d") else 30)
                     log.info(f"Auto-sync: {r['total_new']} nouveaux records")
                 except Exception as e:
@@ -599,7 +650,7 @@ def main():
         log.info(f"\n  API locale  http://localhost:{args.port}")
         log.info(f"  DB: {args.db} | {n} records\n")
 
-    html = Path(args.db).parent / "dashboard_v3.html"
+    html = Path(args.db).parent / "dashboard.html"
     create_app(conn, client, auth_token=args.auth_token, html_path=html).run(
         port=args.port, host=host, debug=False)
 
