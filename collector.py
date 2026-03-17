@@ -253,7 +253,7 @@ def sync_langfuse(conn):
     return len(users)
 
 def sync_requesty_models(conn, client, period="30d"):
-    """Fetch per-model breakdown from Requesty (group_by=model_requested) -> lf_model_daily."""
+    """Fetch per-model breakdown from Requesty grouped_data -> lf_model_daily."""
     days = int(period.rstrip("d")) if period.endswith("d") else 30
     end_dt   = datetime.utcnow()
     start_dt = end_dt - timedelta(days=days)
@@ -266,13 +266,12 @@ def sync_requesty_models(conn, client, period="30d"):
         for k in keys:
             kid = k.get("id")
             try:
-                r = client._get(f"/v1/manage/apikey/{kid}/usage",
-                                json={"start": start, "end": end,
-                                      "resolution": "day", "group_by": "model_requested"})
-                usage = r.get("usage", {})
+                usage = client.key_usage(kid, start, end)
                 for date_str, day_data in usage.items():
-                    for g in day_data.get("grouped_data", []):
-                        model = (g.get("group_by_values") or {}).get("model") or "unknown"
+                    grouped = day_data.get("grouped_data", []) if isinstance(day_data, dict) else []
+                    for g in grouped:
+                        model = (g.get("group_by_values") or {}).get("model") or \
+                                g.get("model") or "unknown"
                         key   = f"rq|{model}|{date_str}"
                         if key not in agg:
                             agg[key] = {"model": model, "date": date_str,
