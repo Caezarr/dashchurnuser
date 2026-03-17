@@ -3,20 +3,20 @@
 Requesty Analytics Collector + Serveur partageable
 ====================================================
 Modes de partage :
-  --share local   → réseau local (collègues au bureau)
-  --share ngrok   → tunnel internet via ngrok
+  --share local    rseau local (collgues au bureau)
+  --share ngrok    tunnel internet via ngrok
 
 Usage:
     pip install requests flask flask-cors
     pip install pyngrok   # si --share ngrok
 
-    # Réseau local
+    # Rseau local
     python collector.py --key YOUR_KEY --auto --share local
 
-    # Internet via ngrok (partage à distance)
+    # Internet via ngrok (partage  distance)
     python collector.py --key YOUR_KEY --auto --share ngrok
 
-    # Avec token d'accès (recommandé pour ngrok)
+    # Avec token d'accs (recommand pour ngrok)
     python collector.py --key YOUR_KEY --auto --share ngrok --auth-token MON_MOT_DE_PASSE
 """
 
@@ -41,7 +41,7 @@ LF_HOST   = os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("requesty")
 
-# ── DB ────────────────────────────────────────────────────────────────────────
+#  DB 
 def init_db(path=DB_PATH):
     conn = sqlite3.connect(str(path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -105,7 +105,7 @@ def get_meta(c, k, d=None):
     r = c.execute("SELECT value FROM meta WHERE key=?", (k,)).fetchone()
     return r["value"] if r else d
 
-# ── API Client ────────────────────────────────────────────────────────────────
+#  API Client 
 class Client:
     def __init__(self, key):
         self.s = requests.Session()
@@ -180,14 +180,14 @@ def sync(client, conn, period="30d"):
                         "raw":           json.dumps(u),
                     })
             except Exception as e:
-                results[kname] = f"✗ {str(e)[:40]}"
+                results[kname] = f"ERR {str(e)[:40]}"
         if recs:
             upsert(conn, recs); total = len(recs)
-            results["/v1/manage/apikey"] = f"✓ {total} records ({len(keys)} keys)"
+            results["/v1/manage/apikey"] = f"OK {total} records ({len(keys)} keys)"
         else:
             results["/v1/manage/apikey"] = "empty"
     except Exception as e:
-        results["sync"] = f"✗ {str(e)[:60]}"
+        results["sync"] = f"ERR {str(e)[:60]}"
 
     now = datetime.utcnow().isoformat()
     set_meta(conn, "last_sync", now)
@@ -196,7 +196,7 @@ def sync(client, conn, period="30d"):
     conn.commit()
     return {"synced_at": now, "total_new": total, "endpoints": results}
 
-# ── Langfuse sync ─────────────────────────────────────────────────────────────
+#  Langfuse sync 
 def sync_langfuse(conn):
     if not LF_PUBLIC or not LF_SECRET:
         return 0
@@ -253,7 +253,7 @@ def sync_langfuse(conn):
     return len(users)
 
 def sync_langfuse_models(conn, days=30):
-    """Aggregate Langfuse observations by (model, date) → lf_model_daily."""
+    """Aggregate Langfuse observations by (model, date)  lf_model_daily."""
     if not LF_PUBLIC or not LF_SECRET:
         return 0
     session = requests.Session()
@@ -313,7 +313,7 @@ def sync_langfuse_models(conn, days=30):
     log.info(f"  Langfuse models: {len(agg)} model/day records synced")
     return len(set(v["model"] for v in agg.values()))
 
-# ── Auth ──────────────────────────────────────────────────────────────────────
+#  Auth 
 def make_auth(token):
     def decorator(f):
         @wraps(f)
@@ -327,7 +327,7 @@ def make_auth(token):
         return wrapper
     return decorator
 
-# ── Flask app ─────────────────────────────────────────────────────────────────
+#  Flask app 
 def create_app(conn, client, auth_token=None, html_path=None):
     app = Flask(__name__)
     CORS(app, origins="*", supports_credentials=True)
@@ -481,10 +481,10 @@ def create_app(conn, client, auth_token=None, html_path=None):
                 days = 999
             d["days_since_last"] = days
             traces = d.get("total_traces", 0) or 0
-            # churné : peu de traces ET inactif depuis > 5 jours
+            # churn : peu de traces ET inactif depuis > 5 jours
             if traces < 15 and days > 5:
                 d["status"] = "churne"; churne.append(d)
-            # à risque : peu de traces (mais encore récent)
+            #  risque : peu de traces (mais encore rcent)
             elif traces < 15:
                 d["status"] = "risque"; risque.append(d)
             # actif : >= 15 traces
@@ -508,14 +508,14 @@ def create_app(conn, client, auth_token=None, html_path=None):
 
     return app
 
-# ── Share helpers ─────────────────────────────────────────────────────────────
+#  Share helpers 
 def share_local(port):
     try:    ip = socket.gethostbyname(socket.gethostname())
     except: ip = "?.?.?.?"
     log.info(f"\n{'='*55}")
-    log.info(f"  ✅  PARTAGE RÉSEAU LOCAL")
-    log.info(f"  Donne ce lien à ton collègue (même WiFi/bureau) :")
-    log.info(f"  →  http://{ip}:{port}")
+    log.info(f"  PARTAGE RESEAU LOCAL")
+    log.info(f"  Donne ce lien a ton collegue (meme WiFi/bureau) :")
+    log.info(f"  ->  http://{ip}:{port}")
     log.info(f"  (Firewall: autorise le port TCP {port})")
     log.info(f"{'='*55}\n")
     return "0.0.0.0"
@@ -523,27 +523,26 @@ def share_local(port):
 def share_ngrok(port, auth_token=None):
     try: from pyngrok import ngrok, conf
     except ImportError:
-        log.error("pyngrok non installé → pip install pyngrok")
+        log.error("pyngrok non install  pip install pyngrok")
         sys.exit(1)
     if tok := os.environ.get("NGROK_AUTHTOKEN"):
         conf.get_default().auth_token = tok
     tunnel = ngrok.connect(port, "http")
     url = tunnel.public_url
     log.info(f"\n{'='*55}")
-    log.info(f"  ✅  TUNNEL NGROK ACTIF")
-    log.info(f"  Partage ce lien à ton collègue :")
+    log.info(f"  TUNNEL NGROK ACTIF")
+    log.info(f"  Partage ce lien a ton collegue :")
     if auth_token:
-        log.info(f"  →  {url}?token={auth_token}")
-        log.info(f"  Token requis pour accéder au dashboard")
+        log.info(f"  ->  {url}?token={auth_token}")
+        log.info(f"  Token requis pour acceder au dashboard")
     else:
-        log.info(f"  →  {url}")
-    log.info(f"  ⚠️   Lien valide tant que le script tourne")
-    log.info(f"  💡  Inscris-toi sur ngrok.com (gratuit) pour un")
-    log.info(f"      tunnel stable avec NGROK_AUTHTOKEN dans .env")
+        log.info(f"  ->  {url}")
+    log.info(f"  Lien valide tant que le script tourne")
+    log.info(f"  Inscris-toi sur ngrok.com (gratuit) pour un tunnel stable avec NGROK_AUTHTOKEN dans .env")
     log.info(f"{'='*55}\n")
     return "127.0.0.1"
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+#  Main 
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--key",        required=True)
@@ -555,18 +554,18 @@ def main():
     p.add_argument("--auto",       action="store_true")
     p.add_argument("--share",      choices=["local","ngrok"], default=None)
     p.add_argument("--auth-token", default=None, dest="auth_token",
-                   help="Protège l'API (accès via ?token=XXX ou Bearer XXX)")
+                   help="Protge l'API (accs via ?token=XXX ou Bearer XXX)")
     args = p.parse_args()
 
     conn   = init_db(Path(args.db))
     client = Client(args.key)
 
-    log.info("Connexion à l'API Requesty...")
+    log.info("Connexion  l'API Requesty...")
     try:
         keys = client.keys()
-        log.info(f"  ✓ {len(keys)} clés API trouvées")
+        log.info(f"  OK {len(keys)} cles API trouvees")
     except Exception as e:
-        log.warning(f"  ⚠ {e}")
+        log.warning(f"  WARN {e}")
 
     if args.sync:
         print(json.dumps(sync(client, conn, args.period), indent=2)); return
@@ -574,7 +573,7 @@ def main():
     if not args.serve:
         log.info(f"Sync initiale (period={args.period})...")
         r = sync(client, conn, args.period)
-        log.info(f"  {r['total_new']} records importés")
+        log.info(f"  {r['total_new']} records imports")
         for ep, st in r["endpoints"].items():
             log.info(f"    {ep}: {st}")
 
@@ -590,14 +589,14 @@ def main():
                 except Exception as e:
                     log.error(f"Auto-sync erreur: {e}")
         threading.Thread(target=cron, daemon=True).start()
-        log.info(f"Auto-sync activé (toutes les {SYNC_INTERVAL//60}min)")
+        log.info(f"Auto-sync activ (toutes les {SYNC_INTERVAL//60}min)")
 
     host = "0.0.0.0" if os.path.exists("/.dockerenv") else "127.0.0.1"
     if args.share == "local":   host = share_local(args.port)
     elif args.share == "ngrok": host = share_ngrok(args.port, args.auth_token)
     else:
         n = conn.execute("SELECT COUNT(*) FROM requests").fetchone()[0]
-        log.info(f"\n  API locale → http://localhost:{args.port}")
+        log.info(f"\n  API locale  http://localhost:{args.port}")
         log.info(f"  DB: {args.db} | {n} records\n")
 
     html = Path(args.db).parent / "dashboard_v3.html"
