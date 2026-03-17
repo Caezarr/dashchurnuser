@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Requesty — Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #080b0f;
+    --surface: #0d1117;
+    --border: #1a2030;
+    --accent: #00e5ff;
+    --accent2: #7c3aed;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+    --success: #10b981;
+    --text: #e2e8f0;
+    --muted: #4a5568;
+    --card: #0d1420;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* GRID BACKGROUND */
+  body::before {
+    content:'';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,255,.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,255,.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* LOGIN SCREEN */
+  #login-screen {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    background: var(--bg);
+  }
+  .login-box {
+    border: 1px solid var(--border);
+    background: var(--card);
+    padding: 48px;
+    width: 400px;
+    position: relative;
+  }
+  .login-box::before {
+    content: '';
+    position: absolute;
+    top: -1px; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--accent2), var(--accent));
+  }
+  .login-logo {
+    font-size: 11px;
+    letter-spacing: .2em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 32px;
+    font-family: 'DM Mono', monospace;
+  }
+  .login-title { font-size: 28px; font-weight: 800; margin-bottom: 8px; }
+  .login-sub { font-size: 13px; color: var(--muted); margin-bottom: 32px; }
+  .login-box input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 14px;
+    padding: 12px 16px;
+    outline: none;
+    margin-bottom: 12px;
+    transition: border-color .2s;
+  }
+  .login-box input:focus { border-color: var(--accent); }
+  .login-box button {
+    width: 100%;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    padding: 13px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: .05em;
+    cursor: pointer;
+    transition: opacity .2s;
+  }
+  .login-box button:hover { opacity: .85; }
+  .login-error { color: var(--danger); font-size: 12px; margin-top: 10px; font-family: 'DM Mono', monospace; display: none; }
+
+  /* MAIN APP */
+  #app { display: none; position: relative; z-index: 1; }
+
+  /* HEADER */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    background: rgba(8,11,15,.95);
+    backdrop-filter: blur(10px);
+    z-index: 50;
+  }
+  .header-left { display: flex; align-items: center; gap: 16px; }
+  .logo-mark {
+    width: 28px; height: 28px;
+    background: linear-gradient(135deg, var(--accent2), var(--accent));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800; color: #fff;
+  }
+  .logo-text { font-size: 14px; font-weight: 700; letter-spacing: .05em; }
+  .logo-sub { font-size: 10px; color: var(--muted); letter-spacing: .15em; font-family: 'DM Mono', monospace; text-transform: uppercase; }
+  .header-right { display: flex; align-items: center; gap: 16px; }
+  .sync-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 6px 14px;
+    cursor: pointer;
+    letter-spacing: .05em;
+    transition: all .2s;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .sync-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .sync-btn.spinning .spin-icon { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .period-select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 6px 10px;
+    outline: none;
+    cursor: pointer;
+  }
+  .last-sync { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); }
+
+  /* MAIN CONTENT */
+  main { padding: 32px; max-width: 1400px; margin: 0 auto; }
+
+  /* KPI STRIP */
+  .kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 1px;
+    background: var(--border);
+    margin-bottom: 32px;
+    border: 1px solid var(--border);
+  }
+  .kpi {
+    background: var(--card);
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+    transition: background .2s;
+  }
+  .kpi:hover { background: #111827; }
+  .kpi::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0;
+    transition: opacity .3s;
+  }
+  .kpi:hover::after { opacity: 1; }
+  .kpi-label {
+    font-size: 10px;
+    letter-spacing: .15em;
+    color: var(--muted);
+    text-transform: uppercase;
+    font-family: 'DM Mono', monospace;
+    margin-bottom: 12px;
+  }
+  .kpi-value {
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .kpi-value.accent { color: var(--accent); }
+  .kpi-value.warn { color: var(--warn); }
+  .kpi-sub { font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; }
+
+  /* GRID */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+  .grid-3 { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-bottom: 24px; }
+
+  /* CARD */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 24px;
+    position: relative;
+  }
+  .card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .card-title {
+    font-size: 11px;
+    letter-spacing: .15em;
+    color: var(--muted);
+    text-transform: uppercase;
+    font-family: 'DM Mono', monospace;
+  }
+  .card-badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    padding: 3px 8px;
+    background: rgba(0,229,255,.1);
+    color: var(--accent);
+    border: 1px solid rgba(0,229,255,.2);
+  }
+
+  /* CHART */
+  .chart-wrap { position: relative; height: 220px; }
+
+  /* MODEL TABLE */
+  .model-list { display: flex; flex-direction: column; gap: 8px; }
+  .model-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .model-row:last-child { border-bottom: none; }
+  .model-name {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .model-bar-wrap { position: relative; height: 3px; background: var(--border); margin-top: 4px; }
+  .model-bar { height: 100%; background: linear-gradient(90deg, var(--accent2), var(--accent)); transition: width .8s ease; }
+  .model-stat { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); text-align: right; white-space: nowrap; }
+  .model-cost { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--warn); text-align: right; }
+
+  /* TIMESERIES */
+  .ts-full { margin-bottom: 24px; }
+
+  /* LOADING */
+  .loading {
+    display: flex; align-items: center; justify-content: center;
+    height: 200px;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    letter-spacing: .1em;
+  }
+  .loading::before {
+    content: '';
+    width: 16px; height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+    margin-right: 12px;
+  }
+
+  /* DONUT WRAP */
+  .donut-wrap { position: relative; height: 200px; }
+
+  /* STATUS DOT */
+  .status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--success);
+    display: inline-block;
+    box-shadow: 0 0 8px var(--success);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; }
+    50% { opacity: .4; }
+  }
+
+  /* FADE IN */
+  @keyframes fadeUp {
+    from { opacity:0; transform: translateY(12px); }
+    to { opacity:1; transform: translateY(0); }
+  }
+  .kpi { animation: fadeUp .4s ease both; }
+  .kpi:nth-child(1){animation-delay:.05s}
+  .kpi:nth-child(2){animation-delay:.1s}
+  .kpi:nth-child(3){animation-delay:.15s}
+  .kpi:nth-child(4){animation-delay:.2s}
+  .kpi:nth-child(5){animation-delay:.25s}
+  .card { animation: fadeUp .4s ease both; animation-delay: .2s; }
+
+  /* TAG */
+  .tag {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: .1em;
+    padding: 2px 6px;
+    border: 1px solid;
+    text-transform: uppercase;
+  }
+  .tag-claude { border-color: rgba(124,58,237,.5); color: #a78bfa; background: rgba(124,58,237,.08); }
+  .tag-gpt { border-color: rgba(16,185,129,.5); color: #6ee7b7; background: rgba(16,185,129,.08); }
+  .tag-gemini { border-color: rgba(245,158,11,.5); color: #fcd34d; background: rgba(245,158,11,.08); }
+  .tag-other { border-color: rgba(100,116,139,.5); color: #94a3b8; background: rgba(100,116,139,.08); }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">▸ Requesty Analytics</div>
+    <h1 class="login-title">Dashboard</h1>
+    <p class="login-sub">Entrez le mot de passe pour accéder aux métriques.</p>
+    <input type="password" id="password-input" placeholder="mot de passe..." autocomplete="current-password">
+    <button onclick="tryLogin()">Accéder →</button>
+    <div class="login-error" id="login-error">⚠ Mot de passe incorrect</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <header>
+    <div class="header-left">
+      <div class="logo-mark">R</div>
+      <div>
+        <div class="logo-text">Requesty</div>
+        <div class="logo-sub">Analytics</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <span class="status-dot"></span>
+      <span class="last-sync" id="last-sync-label">—</span>
+      <select class="period-select" id="period-select" onchange="loadAll()">
+        <option value="7d">7 jours</option>
+        <option value="30d" selected>30 jours</option>
+        <option value="90d">90 jours</option>
+      </select>
+      <button class="sync-btn" id="sync-btn" onclick="doSync()">
+        <span class="spin-icon">↻</span> SYNC
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- KPIs -->
+    <div class="kpi-strip" id="kpi-strip">
+      <div class="kpi"><div class="kpi-label">Coût total</div><div class="kpi-value warn" id="kpi-cost">—</div><div class="kpi-sub">USD</div></div>
+      <div class="kpi"><div class="kpi-label">Requêtes</div><div class="kpi-value accent" id="kpi-req">—</div><div class="kpi-sub">completions</div></div>
+      <div class="kpi"><div class="kpi-label">Tokens total</div><div class="kpi-value" id="kpi-tokens">—</div><div class="kpi-sub">input + output</div></div>
+      <div class="kpi"><div class="kpi-label">Tokens input</div><div class="kpi-value" id="kpi-input">—</div><div class="kpi-sub">—</div></div>
+      <div class="kpi"><div class="kpi-label">Modèles actifs</div><div class="kpi-value accent" id="kpi-models">—</div><div class="kpi-sub">uniques</div></div>
+    </div>
+
+    <!-- TIMESERIES full width -->
+    <div class="ts-full">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Tokens · évolution</span>
+          <span class="card-badge" id="ts-badge">30j</span>
+        </div>
+        <div class="chart-wrap"><canvas id="ts-chart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- COST + DONUT -->
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Coût quotidien ($)</span>
+        </div>
+        <div class="chart-wrap"><canvas id="cost-chart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Répartition par famille</span>
+        </div>
+        <div class="donut-wrap"><canvas id="donut-chart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- MODEL TABLE -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Modèles · détail</span>
+        <span class="card-badge" id="model-count-badge">—</span>
+      </div>
+      <div id="model-list" class="model-list"><div class="loading">Chargement</div></div>
+    </div>
+  </main>
+</div>
+
+<script>
+const API_BASE = '';  // même origine
+let AUTH_TOKEN = '';
+let tsChart, costChart, donutChart;
+
+// ── AUTH ──────────────────────────────────────────────────────────────────────
+async function tryLogin() {
+  const pw = document.getElementById('password-input').value.trim();
+  if (!pw) return;
+  // Test rapide via health (pas d'auth) puis overview (avec auth)
+  const r = await fetch(`${location.origin}/analytics/overview?token=${encodeURIComponent(pw)}`);
+  if (r.ok) {
+    AUTH_TOKEN = pw;
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    loadAll();
+  } else {
+    document.getElementById('login-error').style.display = 'block';
+  }
+}
+document.getElementById('password-input').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
+
+// ── API ───────────────────────────────────────────────────────────────────────
+function apiUrl(path) {
+  const period = document.getElementById('period-select').value;
+  return `${location.origin}${path}?token=${encodeURIComponent(AUTH_TOKEN)}&period=${period}`;
+}
+async function apiFetch(path) {
+  const r = await fetch(apiUrl(path));
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+// ── FORMAT ───────────────────────────────────────────────────────────────────
+function fmtNum(n) {
+  if (!n) return '0';
+  if (n >= 1e9) return (n/1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+  return n.toString();
+}
+function fmtCost(n) { return n ? '$' + parseFloat(n).toFixed(2) : '$0.00'; }
+function fmtDate(s) { return s ? s.slice(5) : ''; }
+function modelTag(name) {
+  if (name.includes('claude') || name.includes('sonnet') || name.includes('haiku') || name.includes('opus')) return 'tag-claude';
+  if (name.includes('gpt') || name.includes('o1') || name.includes('o3')) return 'tag-gpt';
+  if (name.includes('gemini')) return 'tag-gemini';
+  return 'tag-other';
+}
+function modelFamily(name) {
+  if (name.includes('claude') || name.includes('sonnet') || name.includes('haiku') || name.includes('opus')) return 'Claude';
+  if (name.includes('gpt') || name.includes('o1') || name.includes('o3')) return 'OpenAI';
+  if (name.includes('gemini')) return 'Gemini';
+  if (name.includes('mistral')) return 'Mistral';
+  return 'Autre';
+}
+
+// ── CHART CONFIG ─────────────────────────────────────────────────────────────
+Chart.defaults.color = '#4a5568';
+Chart.defaults.borderColor = '#1a2030';
+Chart.defaults.font.family = "'DM Mono', monospace";
+Chart.defaults.font.size = 10;
+
+function destroyChart(c) { if (c) { c.destroy(); } }
+
+// ── LOAD ALL ─────────────────────────────────────────────────────────────────
+async function loadAll() {
+  const period = document.getElementById('period-select').value;
+  document.getElementById('ts-badge').textContent = period;
+  await Promise.all([loadOverview(), loadTimeseries(), loadModels()]);
+  loadHealth();
+}
+
+async function loadOverview() {
+  try {
+    const d = await apiFetch('/analytics/overview');
+    document.getElementById('kpi-cost').textContent = fmtCost(d.total_cost);
+    document.getElementById('kpi-req').textContent = fmtNum(d.total_requests);
+    document.getElementById('kpi-tokens').textContent = fmtNum(d.total_tokens);
+    document.getElementById('kpi-input').textContent = fmtNum(d.input_tokens);
+    document.getElementById('kpi-models').textContent = d.unique_models || '—';
+  } catch(e) { console.error(e); }
+}
+
+async function loadTimeseries() {
+  try {
+    const data = await apiFetch('/analytics/timeseries');
+    const labels = data.map(d => fmtDate(d.period));
+    const tokens = data.map(d => d.tokens || 0);
+    const costs  = data.map(d => parseFloat(d.cost) || 0);
+
+    // Tokens chart
+    destroyChart(tsChart);
+    const ctx1 = document.getElementById('ts-chart').getContext('2d');
+    const grad1 = ctx1.createLinearGradient(0, 0, 0, 220);
+    grad1.addColorStop(0, 'rgba(0,229,255,.3)');
+    grad1.addColorStop(1, 'rgba(0,229,255,0)');
+    tsChart = new Chart(ctx1, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          data: tokens,
+          borderColor: '#00e5ff',
+          borderWidth: 2,
+          backgroundColor: grad1,
+          fill: true,
+          tension: 0.4,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: {
+          callbacks: { label: ctx => ' ' + fmtNum(ctx.raw) + ' tokens' }
+        }},
+        scales: {
+          x: { grid: { color: '#1a2030' }, ticks: { maxTicksLimit: 10 } },
+          y: { grid: { color: '#1a2030' }, ticks: { callback: v => fmtNum(v) } }
+        }
+      }
+    });
+
+    // Cost chart
+    destroyChart(costChart);
+    const ctx2 = document.getElementById('cost-chart').getContext('2d');
+    const grad2 = ctx2.createLinearGradient(0, 0, 0, 220);
+    grad2.addColorStop(0, 'rgba(245,158,11,.5)');
+    grad2.addColorStop(1, 'rgba(245,158,11,.02)');
+    costChart = new Chart(ctx2, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          data: costs,
+          backgroundColor: grad2,
+          borderColor: '#f59e0b',
+          borderWidth: 1,
+          borderRadius: 2,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: {
+          callbacks: { label: ctx => ' $' + ctx.raw.toFixed(2) }
+        }},
+        scales: {
+          x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } },
+          y: { grid: { color: '#1a2030' }, ticks: { callback: v => '$'+v } }
+        }
+      }
+    });
+  } catch(e) { console.error(e); }
+}
+
+async function loadModels() {
+  try {
+    const data = await apiFetch('/analytics/by-model');
+    document.getElementById('model-count-badge').textContent = data.length + ' modèles';
+
+    // Donut by family
+    const families = {};
+    data.forEach(m => {
+      const f = modelFamily(m.model);
+      families[f] = (families[f] || 0) + (m.total_tokens || 0);
+    });
+    destroyChart(donutChart);
+    const ctx3 = document.getElementById('donut-chart').getContext('2d');
+    donutChart = new Chart(ctx3, {
+      type: 'doughnut',
+      data: {
+        labels: Object.keys(families),
+        datasets: [{
+          data: Object.values(families),
+          backgroundColor: ['#7c3aed','#10b981','#f59e0b','#60a5fa','#94a3b8'],
+          borderWidth: 0,
+          hoverOffset: 6,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        cutout: '65%',
+        plugins: {
+          legend: { position: 'bottom', labels: { padding: 12, boxWidth: 10 } },
+          tooltip: { callbacks: { label: ctx => ' ' + fmtNum(ctx.raw) + ' tokens' } }
+        }
+      }
+    });
+
+    // Model table
+    const maxTokens = data[0]?.total_tokens || 1;
+    const html = data.slice(0, 20).map(m => `
+      <div class="model-row">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+            <span class="tag ${modelTag(m.model)}">${modelFamily(m.model)}</span>
+            <span class="model-name">${m.model}</span>
+          </div>
+          <div class="model-bar-wrap">
+            <div class="model-bar" style="width:${Math.round((m.total_tokens/maxTokens)*100)}%"></div>
+          </div>
+        </div>
+        <div class="model-stat">${fmtNum(m.total_tokens)}<br><span style="color:#6b7280">tokens</span></div>
+        <div class="model-stat">${fmtNum(m.request_count)}<br><span style="color:#6b7280">reqs</span></div>
+        <div class="model-cost">${fmtCost(m.total_cost)}</div>
+      </div>
+    `).join('');
+    document.getElementById('model-list').innerHTML = html;
+  } catch(e) { console.error(e); }
+}
+
+async function loadHealth() {
+  try {
+    const d = await fetch(`${location.origin}/analytics/health`).then(r=>r.json());
+    if (d.last_sync) {
+      const dt = new Date(d.last_sync);
+      document.getElementById('last-sync-label').textContent = 'sync ' + dt.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'});
+    }
+  } catch(e) {}
+}
+
+async function doSync() {
+  const btn = document.getElementById('sync-btn');
+  btn.classList.add('spinning');
+  btn.disabled = true;
+  try {
+    const r = await fetch(`${location.origin}/analytics/sync`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${AUTH_TOKEN}` }
+    });
+    if (r.ok) { await loadAll(); }
+  } catch(e) {}
+  btn.classList.remove('spinning');
+  btn.disabled = false;
+}
+</script>
+</body>
+</html>
