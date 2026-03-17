@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wonka AI — Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+/* ─── THEME TOKENS ────────────────────────────────────────────────────────── */
+:root {
+  --accent:      #7C3AED;
+  --accent-dim:  #6D28D9;
+  --accent-bg:   rgba(124,58,237,0.08);
+  --green:       #34C759;
+  --orange:      #FF9F0A;
+  --yellow:      #F59E0B;
+  --red:         #FF453A;
+  --gray:        #8E8E93;
+
+  /* Light */
+  --bg:          #F5F5F7;
+  --surface:     #FFFFFF;
+  --raised:      #F5F5F7;
+  --text:        #1D1D1F;
+  --text-2:      #6E6E73;
+  --text-3:      #AEAEB2;
+  --divider:     rgba(0,0,0,0.07);
+  --shadow-sm:   0 1px 4px rgba(0,0,0,0.05), 0 0 0 0.5px rgba(0,0,0,0.04);
+  --shadow-md:   0 4px 20px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+  --shadow-lg:   0 12px 48px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+  --glass:       rgba(245,245,247,0.82);
+}
+
+html.dark {
+  --accent:      #A78BFA;
+  --accent-dim:  #8B5CF6;
+  --accent-bg:   rgba(167,139,250,0.12);
+
+  --bg:          #000000;
+  --surface:     #1C1C1E;
+  --raised:      #2C2C2E;
+  --text:        #F5F5F7;
+  --text-2:      #86868B;
+  --text-3:      #636366;
+  --divider:     rgba(255,255,255,0.07);
+  --shadow-sm:   0 1px 4px rgba(0,0,0,0.4);
+  --shadow-md:   0 4px 20px rgba(0,0,0,0.45);
+  --shadow-lg:   0 16px 56px rgba(0,0,0,0.6);
+  --glass:       rgba(0,0,0,0.78);
+}
+
+/* ─── RESET ───────────────────────────────────────────────────────────────── */
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background 0.25s, color 0.25s;
+}
+
+/* ─── LOGO MARK ───────────────────────────────────────────────────────────── */
+.logo-mark {
+  width: 30px; height: 30px;
+  background: linear-gradient(140deg, #7C3AED 0%, #A855F7 100%);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 800; color: #fff;
+  letter-spacing: -0.5px;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+/* ─── LOGIN ───────────────────────────────────────────────────────────────── */
+#login-screen {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg);
+  z-index: 100;
+}
+
+.login-card {
+  background: var(--surface);
+  border-radius: 20px;
+  box-shadow: var(--shadow-lg);
+  padding: 44px 40px;
+  width: 380px;
+}
+
+.login-brand {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 32px;
+}
+
+.login-wordmark {
+  font-size: 15px; font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.2px;
+}
+.login-wordmark span { color: var(--text-2); font-weight: 400; }
+
+.login-title {
+  font-size: 26px; font-weight: 700;
+  letter-spacing: -0.5px; margin-bottom: 6px;
+}
+.login-sub {
+  font-size: 14px; color: var(--text-2);
+  margin-bottom: 28px; line-height: 1.5;
+}
+
+.login-card input {
+  width: 100%;
+  background: var(--raised);
+  border: 1.5px solid var(--divider);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: inherit; font-size: 15px;
+  padding: 12px 14px; outline: none;
+  margin-bottom: 10px;
+  transition: border-color 0.15s;
+}
+.login-card input::placeholder { color: var(--text-3); }
+.login-card input:focus { border-color: var(--accent); }
+
+.login-card button {
+  width: 100%;
+  background: var(--accent); color: #fff;
+  border: none; border-radius: 10px;
+  padding: 13px; font-family: inherit;
+  font-weight: 600; font-size: 15px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+.login-card button:hover { background: var(--accent-dim); }
+.login-card button:active { transform: scale(0.99); }
+
+.login-error {
+  color: var(--red); font-size: 12px; margin-top: 10px;
+  font-family: 'JetBrains Mono', monospace; display: none;
+}
+
+/* ─── APP ─────────────────────────────────────────────────────────────────── */
+#app { display: none; }
+
+/* ─── HEADER ──────────────────────────────────────────────────────────────── */
+header {
+  position: sticky; top: 0;
+  height: 54px;
+  background: var(--glass);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid var(--divider);
+  display: flex; align-items: center;
+  justify-content: space-between;
+  padding: 0 24px; z-index: 50;
+}
+
+.header-brand {
+  display: flex; align-items: center; gap: 10px;
+}
+.brand-name {
+  font-size: 15px; font-weight: 700;
+  letter-spacing: -0.2px;
+}
+.brand-name span { color: var(--text-2); font-weight: 400; }
+
+.header-right {
+  display: flex; align-items: center; gap: 8px;
+}
+
+.sync-status {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text-2);
+  font-family: 'JetBrains Mono', monospace;
+  margin-right: 4px;
+}
+.status-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 5px var(--green);
+  animation: glow 2.5s ease-in-out infinite;
+}
+@keyframes glow {
+  0%,100% { opacity:1; } 50% { opacity:.3; }
+}
+
+.period-select {
+  appearance: none; -webkit-appearance: none;
+  background: var(--surface); border: 1.5px solid var(--divider);
+  border-radius: 8px; color: var(--text);
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  padding: 6px 10px; outline: none; cursor: pointer;
+  transition: border-color 0.15s;
+}
+.period-select:focus { border-color: var(--accent); }
+
+.icon-btn {
+  width: 32px; height: 32px;
+  background: var(--surface); border: 1.5px solid var(--divider);
+  border-radius: 8px; color: var(--text-2);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: border-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.sync-btn {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--accent); color: #fff;
+  border: none; border-radius: 8px;
+  padding: 7px 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; font-weight: 500; letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.sync-btn:hover { background: var(--accent-dim); }
+.sync-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.sync-icon { display: inline-block; }
+.sync-btn.spinning .sync-icon { animation: spin 0.75s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── MAIN ────────────────────────────────────────────────────────────────── */
+main {
+  max-width: 1340px; margin: 0 auto;
+  padding: 24px 24px 64px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+
+/* ─── KPI STRIP ───────────────────────────────────────────────────────────── */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+.kpi {
+  background: var(--surface);
+  border-radius: 14px; padding: 20px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s, box-shadow 0.2s;
+  animation: fadeUp 0.35s ease both;
+}
+.kpi:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+.kpi:nth-child(1){animation-delay:.04s}
+.kpi:nth-child(2){animation-delay:.08s}
+.kpi:nth-child(3){animation-delay:.12s}
+.kpi:nth-child(4){animation-delay:.16s}
+.kpi:nth-child(5){animation-delay:.20s}
+
+.kpi-label {
+  font-size: 11px; font-weight: 500;
+  color: var(--text-2);
+  text-transform: uppercase; letter-spacing: 0.07em;
+  margin-bottom: 10px;
+}
+.kpi-value {
+  font-size: 28px; font-weight: 700;
+  letter-spacing: -0.8px; line-height: 1;
+  margin-bottom: 5px; color: var(--text);
+}
+.kpi-value.accent { color: var(--accent); }
+.kpi-value.warn   { color: var(--orange); }
+.kpi-sub {
+  font-size: 11px; color: var(--text-3);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ─── CARD ────────────────────────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border-radius: 16px; padding: 22px;
+  box-shadow: var(--shadow-sm);
+  animation: fadeUp 0.35s ease both;
+  animation-delay: 0.15s;
+}
+
+.card-header {
+  display: flex; align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.card-title {
+  font-size: 13px; font-weight: 600;
+  letter-spacing: -0.1px; color: var(--text);
+}
+.card-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; font-weight: 500;
+  padding: 3px 8px; border-radius: 6px;
+  background: var(--accent-bg); color: var(--accent);
+}
+
+/* ─── GRID LAYOUTS ────────────────────────────────────────────────────────── */
+.col-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* ─── CHARTS ──────────────────────────────────────────────────────────────── */
+.chart-wrap  { position: relative; height: 200px; }
+.donut-wrap  { position: relative; height: 190px; }
+
+/* ─── LOADING ─────────────────────────────────────────────────────────────── */
+.loading {
+  display: flex; align-items: center; justify-content: center;
+  height: 180px; gap: 10px;
+  color: var(--text-3); font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.spinner {
+  width: 14px; height: 14px;
+  border: 1.5px solid var(--divider);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+/* ─── MODEL TABLE ─────────────────────────────────────────────────────────── */
+.model-list { display: flex; flex-direction: column; }
+
+.model-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center; gap: 16px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--divider);
+}
+.model-row:last-child { border-bottom: none; }
+
+.model-name {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px; font-weight: 500;
+  color: var(--text); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.model-bar-track {
+  height: 2px; background: var(--divider);
+  border-radius: 99px; margin-top: 5px; overflow: hidden;
+}
+.model-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent) 0%, #C084FC 100%);
+  border-radius: 99px;
+  transition: width 0.8s cubic-bezier(.4,0,.2,1);
+}
+
+.model-stat {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; color: var(--text-2);
+  text-align: right; white-space: nowrap;
+}
+.model-stat small {
+  display: block; font-size: 9px;
+  color: var(--text-3); margin-top: 2px;
+}
+.model-cost {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px; font-weight: 500;
+  color: var(--orange); text-align: right;
+  white-space: nowrap;
+}
+
+/* ─── TAGS ────────────────────────────────────────────────────────────────── */
+.tag {
+  font-size: 9px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 2px 6px; border-radius: 5px;
+  font-family: 'JetBrains Mono', monospace;
+  flex-shrink: 0;
+}
+.tag-claude { background: rgba(124,58,237,0.1);  color: #8B5CF6; }
+.tag-gpt    { background: rgba(52,199,89,0.1);   color: #34C759; }
+.tag-gemini { background: rgba(255,159,10,0.1);  color: #FF9F0A; }
+.tag-other  { background: rgba(142,142,147,0.1); color: #8E8E93; }
+
+/* ─── STATUS BADGES ───────────────────────────────────────────────────────── */
+.badge {
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 99px;
+  font-family: 'JetBrains Mono', monospace;
+  display: inline-block; white-space: nowrap; flex-shrink: 0;
+}
+.badge-actif       { background: rgba(52,199,89,0.12);   color: #34C759; }
+.badge-inactif     { background: rgba(255,159,10,0.12);  color: #FF9F0A; }
+.badge-risque      { background: rgba(245,158,11,0.12);  color: #D97706; }
+.badge-churne      { background: rgba(255,69,58,0.12);   color: #FF453A; }
+.badge-insuffisant { background: rgba(142,142,147,0.1);  color: #8E8E93; }
+
+/* ─── CHURN ───────────────────────────────────────────────────────────────── */
+.churn-summary-row {
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  gap: 10px; margin-bottom: 20px;
+}
+.churn-stat-card {
+  background: var(--raised);
+  border-radius: 10px; padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 9px;
+}
+.churn-stat-val {
+  font-size: 24px; font-weight: 700;
+  letter-spacing: -0.6px; line-height: 1;
+}
+
+.churn-user-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center; gap: 16px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--divider);
+}
+.churn-user-row:last-child { border-bottom: none; }
+
+.churn-user-id {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px; font-weight: 500;
+  color: var(--text); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.churn-user-dates {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; color: var(--text-3); margin-top: 3px;
+}
+.churn-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px; font-weight: 500;
+  text-align: right; color: var(--text);
+}
+.churn-num small {
+  display: block; font-size: 9px;
+  color: var(--text-3); font-weight: 400; margin-top: 2px;
+}
+
+/* ─── EMPTY STATE ─────────────────────────────────────────────────────────── */
+.empty {
+  padding: 32px; text-align: center;
+  color: var(--text-3); font-size: 13px; line-height: 1.5;
+}
+
+/* ─── ANIMATIONS ──────────────────────────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+</style>
+</head>
+<body>
+
+<!-- ── LOGIN ─────────────────────────────────────────────────────────────── -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="logo-mark">W</div>
+      <span class="login-wordmark">Wonka <span>Analytics</span></span>
+    </div>
+    <h1 class="login-title">Tableau de bord</h1>
+    <p class="login-sub">Entrez votre mot de passe pour accéder aux métriques.</p>
+    <input type="password" id="password-input" placeholder="Mot de passe" autocomplete="current-password">
+    <button onclick="tryLogin()">Accéder</button>
+    <div class="login-error" id="login-error">Mot de passe incorrect</div>
+  </div>
+</div>
+
+<!-- ── APP ───────────────────────────────────────────────────────────────── -->
+<div id="app">
+
+  <header>
+    <div class="header-brand">
+      <div class="logo-mark">W</div>
+      <span class="brand-name">Wonka <span>Analytics</span></span>
+    </div>
+    <div class="header-right">
+      <div class="sync-status">
+        <span class="status-dot"></span>
+        <span id="last-sync-label">—</span>
+      </div>
+      <select class="period-select" id="period-select" onchange="loadAll()">
+        <option value="7d">7 jours</option>
+        <option value="30d" selected>30 jours</option>
+        <option value="90d">90 jours</option>
+      </select>
+      <button class="icon-btn" onclick="toggleTheme()" title="Thème">
+        <svg id="theme-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"/>
+          <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+        </svg>
+      </button>
+      <button class="sync-btn" id="sync-btn" onclick="doSync()">
+        <span class="sync-icon">↻</span> Sync
+      </button>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- KPIs -->
+    <div class="kpi-row">
+      <div class="kpi">
+        <div class="kpi-label">Coût total</div>
+        <div class="kpi-value warn" id="kpi-cost">—</div>
+        <div class="kpi-sub">USD</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Requêtes</div>
+        <div class="kpi-value accent" id="kpi-req">—</div>
+        <div class="kpi-sub">completions</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Tokens total</div>
+        <div class="kpi-value" id="kpi-tokens">—</div>
+        <div class="kpi-sub">input + output</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Tokens input</div>
+        <div class="kpi-value" id="kpi-input">—</div>
+        <div class="kpi-sub">&nbsp;</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Modèles actifs</div>
+        <div class="kpi-value accent" id="kpi-models">—</div>
+        <div class="kpi-sub">uniques</div>
+      </div>
+    </div>
+
+    <!-- Timeseries -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Tokens — évolution</span>
+        <span class="card-badge" id="ts-badge">30j</span>
+      </div>
+      <div class="chart-wrap"><canvas id="ts-chart"></canvas></div>
+    </div>
+
+    <!-- Cost + Donut -->
+    <div class="col-2">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Coût quotidien</span>
+        </div>
+        <div class="chart-wrap"><canvas id="cost-chart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Répartition par famille</span>
+        </div>
+        <div class="donut-wrap"><canvas id="donut-chart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Models -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Modèles — détail</span>
+        <span class="card-badge" id="model-count-badge">—</span>
+      </div>
+      <div id="model-list" class="model-list">
+        <div class="loading"><span class="spinner"></span> Chargement</div>
+      </div>
+    </div>
+
+    <!-- Churn -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Churn — Analyse utilisateurs Langfuse</span>
+        <span class="card-badge" id="churn-total-badge">—</span>
+      </div>
+
+      <div class="churn-summary-row">
+        <div class="churn-stat-card">
+          <span class="badge badge-actif">Actifs</span>
+          <span class="churn-stat-val" id="churn-n-actif" style="color:#34C759">—</span>
+        </div>
+        <div class="churn-stat-card">
+          <span class="badge badge-inactif">Inactifs</span>
+          <span class="churn-stat-val" id="churn-n-inactif" style="color:#FF9F0A">—</span>
+        </div>
+        <div class="churn-stat-card">
+          <span class="badge badge-risque">Risque</span>
+          <span class="churn-stat-val" id="churn-n-risque" style="color:#D97706">—</span>
+        </div>
+        <div class="churn-stat-card">
+          <span class="badge badge-churne">Churnés</span>
+          <span class="churn-stat-val" id="churn-n-churne" style="color:#FF453A">—</span>
+        </div>
+        <div class="churn-stat-card">
+          <span class="badge badge-insuffisant">Insuffisant</span>
+          <span class="churn-stat-val" id="churn-n-insuffisant" style="color:#8E8E93">—</span>
+        </div>
+      </div>
+
+      <div id="churn-list">
+        <div class="loading"><span class="spinner"></span> Chargement</div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+/* ─── THEME ─────────────────────────────────────────────────────────────────── */
+(function initTheme() {
+  const stored = localStorage.getItem('wonka-theme');
+  if (stored === 'dark') {
+    document.documentElement.classList.add('dark');
+  } else if (stored === 'light') {
+    document.documentElement.classList.remove('dark');
+  } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    document.documentElement.classList.add('dark');
+  }
+})();
+
+function isDark() { return document.documentElement.classList.contains('dark'); }
+
+function toggleTheme() {
+  const dark = document.documentElement.classList.toggle('dark');
+  localStorage.setItem('wonka-theme', dark ? 'dark' : 'light');
+  applyChartTheme();
+}
+
+function chartTheme() {
+  const dark = isDark();
+  return {
+    grid:   dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+    text:   dark ? '#86868B' : '#6E6E73',
+    accent: dark ? '#A78BFA' : '#7C3AED',
+    orange: '#FF9F0A',
+  };
+}
+
+function applyChartTheme() {
+  const t = chartTheme();
+  Chart.defaults.color       = t.text;
+  Chart.defaults.borderColor = t.grid;
+  [tsChart, costChart, donutChart].forEach(c => {
+    if (!c) return;
+    if (c.options.scales) {
+      ['x','y'].forEach(ax => {
+        if (c.options.scales[ax]) {
+          if (c.options.scales[ax].grid)  c.options.scales[ax].grid.color  = t.grid;
+          if (c.options.scales[ax].ticks) c.options.scales[ax].ticks.color = t.text;
+        }
+      });
+    }
+    c.update('none');
+  });
+}
+
+/* ─── STATE ──────────────────────────────────────────────────────────────────── */
+let AUTH_TOKEN = '';
+let tsChart, costChart, donutChart;
+
+/* ─── AUTH ───────────────────────────────────────────────────────────────────── */
+async function tryLogin() {
+  const pw = document.getElementById('password-input').value.trim();
+  if (!pw) return;
+  // Use period=30d so the auth check doubles as the first data fetch.
+  // The result is passed to loadAll() to avoid a duplicate overview request.
+  const r = await fetch(
+    `${location.origin}/analytics/overview?token=${encodeURIComponent(pw)}&period=30d`
+  );
+  if (r.ok) {
+    AUTH_TOKEN = pw;
+    const overviewData = await r.json();
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    // Populate KPIs immediately from the login response (no extra round-trip)
+    populateOverview(overviewData);
+    // Load everything else (timeseries, models, churn, health)
+    loadAll(/* skipOverview= */ true);
+  } else {
+    document.getElementById('login-error').style.display = 'block';
+  }
+}
+
+function populateOverview(d) {
+  document.getElementById('kpi-cost').textContent   = fmtCost(d.total_cost);
+  document.getElementById('kpi-req').textContent    = fmtNum(d.total_requests);
+  document.getElementById('kpi-tokens').textContent = fmtNum(d.total_tokens);
+  document.getElementById('kpi-input').textContent  = fmtNum(d.total_input);
+  document.getElementById('kpi-models').textContent = d.unique_models || '—';
+}
+document.getElementById('password-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') tryLogin();
+});
+
+/* ─── API ─────────────────────────────────────────────────────────────────────── */
+function apiUrl(path) {
+  const period = document.getElementById('period-select').value;
+  return `${location.origin}${path}?token=${encodeURIComponent(AUTH_TOKEN)}&period=${period}`;
+}
+async function apiFetch(path) {
+  const r = await fetch(apiUrl(path));
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+/* ─── FORMAT ──────────────────────────────────────────────────────────────────── */
+function fmtNum(n) {
+  if (!n) return '0';
+  if (n >= 1e9) return (n/1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+  return n.toString();
+}
+function fmtCost(n)  { return n ? '$' + parseFloat(n).toFixed(2) : '$0.00'; }
+function fmtDate(s)  { return s ? s.slice(5) : ''; }
+
+function modelTag(name) {
+  if (name.includes('claude') || name.includes('sonnet') || name.includes('haiku') || name.includes('opus')) return 'tag-claude';
+  if (name.includes('gpt') || name.includes('o1') || name.includes('o3')) return 'tag-gpt';
+  if (name.includes('gemini')) return 'tag-gemini';
+  return 'tag-other';
+}
+function modelFamily(name) {
+  if (name.includes('claude') || name.includes('sonnet') || name.includes('haiku') || name.includes('opus')) return 'Claude';
+  if (name.includes('gpt') || name.includes('o1') || name.includes('o3')) return 'OpenAI';
+  if (name.includes('gemini')) return 'Gemini';
+  if (name.includes('mistral')) return 'Mistral';
+  return 'Autre';
+}
+
+/* ─── CHART DEFAULTS ──────────────────────────────────────────────────────────── */
+const t0 = chartTheme();
+Chart.defaults.color       = t0.text;
+Chart.defaults.borderColor = t0.grid;
+Chart.defaults.font.family = "'JetBrains Mono', monospace";
+Chart.defaults.font.size   = 10;
+
+function destroyChart(c) { if (c) c.destroy(); }
+
+/* ─── LOAD ALL ────────────────────────────────────────────────────────────────── */
+async function loadAll(skipOverview = false) {
+  const period = document.getElementById('period-select').value;
+  document.getElementById('ts-badge').textContent = period;
+  const tasks = [loadTimeseries(), loadModels(), loadChurn()];
+  if (!skipOverview) tasks.push(loadOverview());
+  await Promise.all(tasks);
+  loadHealth();
+}
+
+/* ─── OVERVIEW ────────────────────────────────────────────────────────────────── */
+async function loadOverview() {
+  try {
+    const d = await apiFetch('/analytics/overview');
+    populateOverview(d);
+  } catch(e) { console.error(e); }
+}
+
+/* ─── TIMESERIES ──────────────────────────────────────────────────────────────── */
+async function loadTimeseries() {
+  try {
+    const data   = await apiFetch('/analytics/timeseries');
+    const labels = data.map(d => fmtDate(d.period));
+    const tokens = data.map(d => d.tokens || 0);
+    const costs  = data.map(d => parseFloat(d.cost) || 0);
+    const t      = chartTheme();
+
+    destroyChart(tsChart);
+    const ctx1 = document.getElementById('ts-chart').getContext('2d');
+    const grad1 = ctx1.createLinearGradient(0, 0, 0, 200);
+    grad1.addColorStop(0, isDark() ? 'rgba(167,139,250,.28)' : 'rgba(124,58,237,.18)');
+    grad1.addColorStop(1, 'rgba(124,58,237,0)');
+    tsChart = new Chart(ctx1, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          data: tokens,
+          borderColor: t.accent, borderWidth: 1.5,
+          backgroundColor: grad1, fill: true,
+          tension: 0.4, pointRadius: 0, pointHoverRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => ' ' + fmtNum(ctx.raw) + ' tokens' } }
+        },
+        scales: {
+          x: { grid: { color: t.grid }, ticks: { maxTicksLimit: 10, color: t.text } },
+          y: { grid: { color: t.grid }, ticks: { callback: v => fmtNum(v), color: t.text } }
+        }
+      }
+    });
+
+    destroyChart(costChart);
+    const ctx2 = document.getElementById('cost-chart').getContext('2d');
+    const grad2 = ctx2.createLinearGradient(0, 0, 0, 200);
+    grad2.addColorStop(0, 'rgba(255,159,10,.5)');
+    grad2.addColorStop(1, 'rgba(255,159,10,.02)');
+    costChart = new Chart(ctx2, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          data: costs,
+          backgroundColor: grad2,
+          borderColor: '#FF9F0A', borderWidth: 1,
+          borderRadius: 3,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => ' $' + ctx.raw.toFixed(2) } }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { maxTicksLimit: 8, color: t.text } },
+          y: { grid: { color: t.grid }, ticks: { callback: v => '$'+v, color: t.text } }
+        }
+      }
+    });
+  } catch(e) { console.error(e); }
+}
+
+/* ─── MODELS ──────────────────────────────────────────────────────────────────── */
+async function loadModels() {
+  try {
+    const raw  = await apiFetch('/analytics/by-model');
+    const data = Array.isArray(raw) ? raw : (raw?.data || []);
+
+    if (!data.length) {
+      document.getElementById('model-count-badge').textContent = '0';
+      document.getElementById('model-list').innerHTML =
+        '<div class="empty">Aucune donnée — lancez un sync</div>';
+      return;
+    }
+
+    document.getElementById('model-count-badge').textContent = data.length + ' modèles';
+
+    const families = {};
+    data.forEach(m => {
+      const f = modelFamily(m.model);
+      families[f] = (families[f] || 0) + (m.total_tokens || 0);
+    });
+
+    destroyChart(donutChart);
+    const t   = chartTheme();
+    const ctx3 = document.getElementById('donut-chart').getContext('2d');
+    donutChart = new Chart(ctx3, {
+      type: 'doughnut',
+      data: {
+        labels: Object.keys(families),
+        datasets: [{
+          data: Object.values(families),
+          backgroundColor: ['#7C3AED','#34C759','#FF9F0A','#60A5FA','#8E8E93'],
+          borderWidth: 0, hoverOffset: 6,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        cutout: '66%',
+        plugins: {
+          legend: { position: 'bottom', labels: { padding: 14, boxWidth: 9, color: t.text } },
+          tooltip: { callbacks: { label: ctx => ' ' + fmtNum(ctx.raw) + ' tokens' } }
+        }
+      }
+    });
+
+    const maxT = data[0]?.total_tokens || 1;
+    const html = data.slice(0, 20).map(m => `
+      <div class="model-row">
+        <div>
+          <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px">
+            <span class="tag ${modelTag(m.model)}">${modelFamily(m.model)}</span>
+            <span class="model-name">${m.model}</span>
+          </div>
+          <div class="model-bar-track">
+            <div class="model-bar-fill" style="width:${Math.round((m.total_tokens/maxT)*100)}%"></div>
+          </div>
+        </div>
+        <div class="model-stat">${fmtNum(m.total_tokens)}<small>tokens</small></div>
+        <div class="model-stat">${fmtNum(m.request_count)}<small>reqs</small></div>
+        <div class="model-cost">${fmtCost(m.total_cost)}</div>
+      </div>
+    `).join('');
+    document.getElementById('model-list').innerHTML = html;
+  } catch(e) { console.error(e); }
+}
+
+/* ─── HEALTH ──────────────────────────────────────────────────────────────────── */
+async function loadHealth() {
+  try {
+    const d   = await fetch(`${location.origin}/analytics/health`).then(r => r.json());
+    const raw = d.last_requesty_sync || d.last_lf_users_sync;
+    if (raw && raw !== 'never') {
+      const dt = new Date(raw);
+      document.getElementById('last-sync-label').textContent =
+        'sync ' + dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    }
+  } catch(e) {}
+}
+
+/* ─── CHURN ───────────────────────────────────────────────────────────────────── */
+function statusLabel(s) {
+  const m = { actif: 'Actif', inactif: 'Inactif', risque: 'Risque', churne: 'Churné', insuffisant: '—' };
+  return m[s] || s;
+}
+
+async function loadChurn() {
+  try {
+    const d = await fetch(
+      `${location.origin}/analytics/churn-users?token=${encodeURIComponent(AUTH_TOKEN)}`
+    ).then(r => r.json());
+
+    const nActif       = (d.actif       || []).length;
+    const nInactif     = (d.inactif     || []).length;
+    const nRisque      = (d.risque      || []).length;
+    const nChurne      = (d.churne      || []).length;
+    const nInsuffisant = (d.insuffisant || []).length;
+
+    document.getElementById('churn-n-actif').textContent       = nActif;
+    document.getElementById('churn-n-inactif').textContent     = nInactif;
+    document.getElementById('churn-n-risque').textContent      = nRisque;
+    document.getElementById('churn-n-churne').textContent      = nChurne;
+    document.getElementById('churn-n-insuffisant').textContent = nInsuffisant;
+    document.getElementById('churn-total-badge').textContent   = (d.total || 0) + ' users';
+
+    const all = [
+      ...(d.actif       || []),
+      ...(d.inactif     || []),
+      ...(d.risque      || []),
+      ...(d.churne      || []),
+      ...(d.insuffisant || []),
+    ];
+
+    if (!all.length) {
+      document.getElementById('churn-list').innerHTML =
+        '<div class="empty">Aucun utilisateur Langfuse — lancez un sync</div>';
+      return;
+    }
+
+    const rows = all.map(u => `
+      <div class="churn-user-row">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <span class="badge badge-${u.status}">${statusLabel(u.status)}</span>
+            <span class="churn-user-id">${u.user_id}</span>
+          </div>
+          <div class="churn-user-dates">
+            1ère trace : ${u.first_seen ? u.first_seen.slice(0,10) : '—'}
+            &nbsp;·&nbsp;
+            dernière : ${u.last_seen ? u.last_seen.slice(0,10) : '—'}
+          </div>
+        </div>
+        <div class="churn-num">
+          ${u.total_traces ?? '—'}
+          <small>traces</small>
+        </div>
+        <div class="churn-num">
+          ${u.days_since_last != null ? u.days_since_last + 'j' : '—'}
+          <small>inactivité</small>
+        </div>
+      </div>
+    `).join('');
+    document.getElementById('churn-list').innerHTML = rows;
+
+  } catch(e) {
+    document.getElementById('churn-list').innerHTML =
+      '<div class="empty" style="color:var(--red)">Erreur chargement churn</div>';
+    console.error('loadChurn:', e);
+  }
+}
+
+/* ─── SYNC ────────────────────────────────────────────────────────────────────── */
+async function doSync() {
+  const btn    = document.getElementById('sync-btn');
+  const period = document.getElementById('period-select').value;
+  btn.classList.add('spinning');
+  btn.disabled = true;
+  try {
+    const r = await fetch(`${location.origin}/analytics/sync`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${AUTH_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ period }),
+    });
+    if (r.ok) {
+      await loadAll();
+    } else {
+      const err = await r.json().catch(() => ({}));
+      console.error('Sync failed:', r.status, err);
+      alert(`Sync échoué (${r.status}): ${err.error || 'erreur inconnue'}`);
+    }
+  } catch(e) {
+    console.error('Sync error:', e);
+    alert('Sync échoué : ' + e.message);
+  }
+  btn.classList.remove('spinning');
+  btn.disabled = false;
+}
+</script>
+</body>
+</html>
