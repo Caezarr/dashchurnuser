@@ -220,9 +220,47 @@ header {
   transition: background 0.15s;
 }
 .sync-btn:hover { background: var(--accent-dim); }
+.logout-link {
+  background: none; border: none;
+  font-size: 11px; font-weight: 500;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-family: inherit;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+.logout-link:hover {
+  color: var(--text-2);
+  background: var(--raised);
+}
+
 .sync-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .sync-icon { display: inline-block; }
 .sync-btn.spinning .sync-icon { animation: spin 0.75s linear infinite; }
+
+.pdf-btn {
+  display: flex; align-items: center; gap: 4px;
+  background: var(--surface); color: var(--text-2);
+  border: 1.5px solid var(--divider);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+.pdf-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+.pdf-btn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+  pointer-events: none;
+}
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ─── MAIN ────────────────────────────────────────────────────────────────── */
@@ -364,6 +402,90 @@ main {
   white-space: nowrap;
 }
 
+.org-key-list { display: flex; flex-direction: column; }
+.org-key-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto auto;
+  align-items: center; gap: 12px 18px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--divider);
+}
+.org-wonka-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 16px 24px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--divider);
+}
+#wonka-org-list .org-wonka-row { grid-template-columns: 1fr auto auto auto; }
+#wonka-org-list .org-wonka-head { grid-template-columns: 1fr auto auto auto; }
+.org-wonka-row:last-child { border-bottom: none; }
+.org-wonka-messages {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px; font-weight: 600;
+  color: var(--accent);
+  text-align: right;
+}
+.org-wonka-users {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text-2);
+  text-align: right;
+}
+.org-wonka-head {
+  grid-template-columns: 1fr auto auto;
+  font-size: 10px; font-weight: 600;
+}
+.org-wonka-head {
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--divider);
+}
+.org-key-row:last-child { border-bottom: none; }
+.org-key-head {
+  padding-top: 0 !important;
+  font-size: 10px; font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--divider);
+}
+.org-key-head .org-key-stat,
+.org-key-head .org-key-cost { font-size: 10px; color: var(--text-3); font-weight: 600; }
+.org-key-name {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px; font-weight: 600;
+  color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.org-key-id {
+  font-size: 10px; color: var(--text-3);
+  margin-top: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  word-break: break-all;
+  white-space: normal;
+}
+.org-key-stat {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; color: var(--text-2);
+  text-align: right; white-space: nowrap;
+}
+.org-key-stat small {
+  display: block; font-size: 9px; color: var(--text-3); margin-top: 2px;
+}
+.org-key-cost {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px; font-weight: 600;
+  color: var(--orange);
+  text-align: right;
+}
+
 /* ─── TAGS ────────────────────────────────────────────────────────────────── */
 .tag {
   font-size: 9px; font-weight: 600;
@@ -393,13 +515,85 @@ main {
 
 /* ─── CHURN ───────────────────────────────────────────────────────────────── */
 .churn-summary-row {
-  display: grid; grid-template-columns: repeat(5, 1fr);
-  gap: 10px; margin-bottom: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  gap: 10px; margin-bottom: 12px;
 }
 .churn-stat-card {
   background: var(--raised);
   border-radius: 10px; padding: 14px 16px;
   display: flex; flex-direction: column; gap: 9px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  user-select: none;
+}
+.churn-stat-card:hover {
+  background: var(--surface);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.04);
+}
+.churn-stat-card.churn-filter-active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--raised));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.dark .churn-stat-card.churn-filter-active {
+  background: color-mix(in srgb, var(--accent) 18%, var(--raised));
+}
+.churn-filter-hint {
+  font-size: 12px; color: var(--text-3);
+  margin-bottom: 14px;
+  min-height: 1.25em;
+}
+.churn-filter-hint kbd {
+  font-family: inherit; font-size: 11px; padding: 2px 6px;
+  border-radius: 4px; background: var(--raised); border: 1px solid var(--border);
+}
+.churn-sort-bar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  margin-bottom: 14px; font-size: 13px;
+}
+.churn-sort-label { color: var(--text-3); margin-right: 4px; }
+.churn-sort-btn, .churn-sort-dir {
+  padding: 6px 12px; border-radius: 8px; border: 1px solid var(--divider);
+  background: var(--raised); color: var(--text-2);
+  font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.churn-sort-btn:hover, .churn-sort-dir:hover {
+  background: var(--surface); border-color: var(--text-3);
+}
+.churn-sort-btn.churn-sort-active, .churn-sort-dir.churn-sort-active {
+  border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--raised));
+  color: var(--accent);
+}
+.dark .churn-sort-btn.churn-sort-active, .dark .churn-sort-dir.churn-sort-active {
+  background: color-mix(in srgb, var(--accent) 18%, var(--raised));
+}
+.churn-header-actions {
+  display: flex; align-items: center; gap: 10px;
+  flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end;
+}
+.churn-extraire-btn {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1.5px solid var(--divider);
+  background: var(--raised);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+.churn-extraire-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+.churn-extraire-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
 }
 .churn-stat-val {
   font-size: 24px; font-weight: 700;
@@ -408,31 +602,214 @@ main {
 
 .churn-user-row {
   display: grid;
-  grid-template-columns: 1fr auto auto;
-  align-items: center; gap: 16px;
-  padding: 11px 0;
+  grid-template-columns: auto 1fr auto;
+  align-items: center; gap: 16px 20px;
+  padding: 16px 0;
   border-bottom: 1px solid var(--divider);
 }
 .churn-user-row:last-child { border-bottom: none; }
 
-.churn-user-id {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px; font-weight: 500;
-  color: var(--text); overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap;
+.churn-rank-cell {
+  display: flex; align-items: center; justify-content: center;
+  width: 36px; min-height: 28px;
+  font-size: 14px; font-weight: 700;
+  color: var(--text-3);
 }
+.churn-rank { font-family: var(--font-mono); font-size: 12px; line-height: 1; }
+.churn-medal { font-size: 20px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
+.churn-medal-gold { filter: drop-shadow(0 0 1px rgba(0,0,0,0.2)); }
+.churn-medal-silver { filter: drop-shadow(0 0 1px rgba(0,0,0,0.2)); }
+.churn-medal-bronze { filter: drop-shadow(0 0 1px rgba(0,0,0,0.2)); }
+
+/* Podium d'activité mensuel */
+.churn-podium-wrap { margin-bottom: 24px; }
+.churn-podium-header {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  gap: 10px; margin-bottom: 10px;
+}
+.churn-podium-title {
+  font-size: 12px; font-weight: 600;
+  color: var(--text-3);
+  letter-spacing: 0.02em;
+}
+.churn-podium-period {
+  display: flex; align-items: center; gap: 6px;
+}
+.churn-podium-period-btn {
+  padding: 5px 10px; border-radius: 8px; border: 1px solid var(--divider);
+  background: var(--raised); color: var(--text-2);
+  font-family: inherit; font-size: 11px; font-weight: 500; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.churn-podium-period-btn:hover {
+  background: var(--surface); border-color: var(--text-3);
+}
+.churn-podium-period-btn.active {
+  border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--raised));
+  color: var(--accent);
+}
+.dark .churn-podium-period-btn.active {
+  background: color-mix(in srgb, var(--accent) 18%, var(--raised));
+}
+.churn-org-filter-wrap {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  margin-bottom: 12px; font-size: 13px;
+}
+.churn-org-filter-label { color: var(--text-3); margin-right: 6px; }
+.churn-org-select {
+  padding: 6px 10px; border-radius: 8px; border: 1px solid var(--divider);
+  background: var(--raised); color: var(--text-2);
+  font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+  min-width: 140px;
+}
+.churn-org-select:focus { outline: none; border-color: var(--accent); }
+.churn-podium {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  align-items: flex-end;
+  justify-content: center;
+}
+.churn-podium-place {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 12px 10px;
+  background: var(--raised);
+  border-radius: 12px;
+  border: 1px solid var(--divider);
+  transition: transform 0.2s ease;
+}
+/* 2e place — intermédiaire (plus grand que 3e, plus petit que 1er) */
+.churn-podium-place.podium-2 {
+  order: 1;
+  flex: 0 1 27%;
+  min-width: 115px;
+  padding: 14px 10px;
+  min-height: 150px;
+  border-color: rgba(192, 192, 192, 0.5);
+}
+.churn-podium-place.podium-2 .churn-podium-avatar { width: 56px; height: 56px; font-size: 20px; margin-bottom: 8px; }
+.churn-podium-place.podium-2 .churn-podium-badge { font-size: 11px; padding: 3px 9px; margin-bottom: 6px; }
+.churn-podium-place.podium-2 .churn-podium-name { font-size: 12px; margin-bottom: 4px; }
+.churn-podium-place.podium-2 .churn-podium-stat { font-size: 11px; }
+/* 1er — le plus grand (vrai podium) */
+.churn-podium-place.podium-1 {
+  order: 2;
+  flex: 0 1 32%;
+  min-width: 140px;
+  padding: 20px 14px;
+  min-height: 180px;
+  border-color: rgba(212, 175, 55, 0.5);
+  box-shadow: 0 4px 16px rgba(212, 175, 55, 0.2);
+}
+.churn-podium-place.podium-1 .churn-podium-avatar { width: 72px; height: 72px; font-size: 28px; margin-bottom: 12px; }
+.churn-podium-place.podium-1 .churn-podium-badge { font-size: 12px; padding: 4px 12px; margin-bottom: 10px; }
+.churn-podium-place.podium-1 .churn-podium-name { font-size: 14px; margin-bottom: 6px; }
+.churn-podium-place.podium-1 .churn-podium-stat { font-size: 12px; }
+.churn-podium-place.podium-1 .churn-podium-avatar { background: linear-gradient(135deg, #d4af37, #b8960c); }
+/* 3e place — le plus petit */
+.churn-podium-place.podium-3 {
+  order: 3;
+  flex: 0 1 22%;
+  min-width: 95px;
+  padding: 10px 8px;
+  min-height: 110px;
+  border-color: rgba(205, 127, 50, 0.5);
+}
+.churn-podium-place.podium-3 .churn-podium-avatar { width: 40px; height: 40px; font-size: 14px; margin-bottom: 6px; }
+.churn-podium-place.podium-3 .churn-podium-badge { font-size: 10px; padding: 2px 8px; margin-bottom: 4px; }
+.churn-podium-place.podium-3 .churn-podium-name { font-size: 11px; margin-bottom: 2px; }
+.churn-podium-place.podium-3 .churn-podium-stat { font-size: 10px; }
+
+.churn-podium-avatar {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 700;
+  color: #fff;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+.churn-podium-place.podium-2 .churn-podium-avatar { background: linear-gradient(135deg, #9ca3af, #6b7280); }
+.churn-podium-place.podium-3 .churn-podium-avatar { background: linear-gradient(135deg, #cd7f32, #a0522d); }
+.churn-podium-badge {
+  font-size: 11px; font-weight: 700;
+  padding: 3px 10px; border-radius: 20px;
+  margin-bottom: 8px;
+}
+.churn-podium-place.podium-1 .churn-podium-badge { background: rgba(212, 175, 55, 0.2); color: #b8960c; border: 1px solid rgba(212, 175, 55, 0.5); }
+.churn-podium-place.podium-2 .churn-podium-badge { background: rgba(192, 192, 192, 0.25); color: #6b7280; border: 1px solid rgba(192, 192, 192, 0.5); }
+.churn-podium-place.podium-3 .churn-podium-badge { background: rgba(205, 127, 50, 0.2); color: #a0522d; border: 1px solid rgba(205, 127, 50, 0.5); }
+.churn-podium-name {
+  font-size: 13px; font-weight: 600;
+  color: var(--text);
+  text-align: center; line-height: 1.25;
+  word-break: break-all;
+  margin-bottom: 4px;
+}
+.churn-podium-stat {
+  font-size: 11px; color: var(--text-3);
+}
+.churn-podium-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 13px;
+  background: var(--raised);
+  border-radius: 12px;
+  border: 1px dashed var(--divider);
+  margin-bottom: 24px;
+}
+
+.churn-user-main { min-width: 0; }
+.churn-user-head {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 10px;
+}
+.churn-email {
+  font-size: 15px; font-weight: 600;
+  letter-spacing: -0.02em; color: var(--text);
+  line-height: 1.25; word-break: break-all;
+}
+.churn-org {
+  font-size: 13px; color: var(--text-2);
+  margin-top: 4px; line-height: 1.35;
+  word-break: break-word;
+}
+.churn-userid {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; font-weight: 450;
+  color: var(--text-3);
+  margin-top: 8px;
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+}
+.churn-userid-label {
+  font-size: 9px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-3); opacity: 0.85;
+}
+.churn-userid code {
+  font-size: 11px; background: var(--raised);
+  padding: 2px 8px; border-radius: 6px;
+  color: var(--text-2);
+}
+.churn-missing { color: var(--text-3); font-weight: 500; }
 .churn-user-dates {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px; color: var(--text-3); margin-top: 3px;
+  font-size: 10px; color: var(--text-3); margin-top: 10px;
+}
+.churn-user-metrics {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
+  padding-top: 2px;
 }
 .churn-num {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 12px; font-weight: 500;
+  font-size: 13px; font-weight: 600;
   text-align: right; color: var(--text);
 }
 .churn-num small {
   display: block; font-size: 9px;
-  color: var(--text-3); font-weight: 400; margin-top: 2px;
+  color: var(--text-3); font-weight: 500; margin-top: 3px;
+  letter-spacing: 0.02em;
 }
 
 /* ─── EMPTY STATE ─────────────────────────────────────────────────────────── */
@@ -474,15 +851,20 @@ main {
       <span class="brand-name">Wonka <span>Analytics</span></span>
     </div>
     <div class="header-right">
+      <button type="button" class="logout-link" onclick="logoutDashboard()" title="Effacer la session mémorisée sur cet appareil">Déconnexion</button>
       <div class="sync-status">
         <span class="status-dot"></span>
         <span id="last-sync-label">—</span>
       </div>
       <select class="period-select" id="period-select" onchange="loadAll()">
+        <option value="1d">1 jour</option>
         <option value="7d">7 jours</option>
         <option value="30d" selected>30 jours</option>
         <option value="90d">90 jours</option>
       </select>
+      <button type="button" class="pdf-btn" id="export-screenshot-btn" onclick="exportDashboardPng()" title="Télécharger une capture PNG du tableau de bord (comme un screenshot)">
+        PNG
+      </button>
       <button class="icon-btn" onclick="toggleTheme()" title="Thème">
         <svg id="theme-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="5"/>
@@ -522,7 +904,7 @@ main {
       <div class="kpi">
         <div class="kpi-label">Modèles actifs</div>
         <div class="kpi-value accent" id="kpi-models">—</div>
-        <div class="kpi-sub">uniques</div>
+        <div class="kpi-sub">LLM distincts</div>
       </div>
     </div>
 
@@ -545,16 +927,16 @@ main {
       </div>
       <div class="card">
         <div class="card-header">
-          <span class="card-title">Répartition par famille</span>
+          <span class="card-title">Répartition par modèle</span>
         </div>
         <div class="donut-wrap"><canvas id="donut-chart"></canvas></div>
       </div>
     </div>
 
     <!-- Models -->
-    <div class="card">
+    <div class="card" id="dash-card-models">
       <div class="card-header">
-        <span class="card-title">Modèles — détail</span>
+        <span class="card-title">Top 5 modèles</span>
         <span class="card-badge" id="model-count-badge">—</span>
       </div>
       <div id="model-list" class="model-list">
@@ -562,34 +944,81 @@ main {
       </div>
     </div>
 
-    <!-- Churn -->
-    <div class="card">
+    <!-- Organisations Wonka (messages Mongo) -->
+    <div class="card" id="dash-card-wonka-org">
       <div class="card-header">
-        <span class="card-title">Churn — Analyse utilisateurs Langfuse</span>
-        <span class="card-badge" id="churn-total-badge">—</span>
+        <span class="card-title">Usage par organisation</span>
+        <span class="card-badge" id="wonka-org-badge">—</span>
+      </div>
+      <div id="wonka-org-list" class="org-key-list">
+        <div class="loading" style="min-height:100px"><span class="spinner"></span> Chargement</div>
+      </div>
+    </div>
+
+    <!-- Churn -->
+    <div class="card" id="dash-card-churn">
+      <div class="card-header">
+        <span class="card-title">Wonka Chat Activity</span>
+        <div class="churn-header-actions">
+          <button type="button" class="churn-extraire-btn" id="churn-export-csv-btn" disabled onclick="exportChurnCategoryCsv()" title="CSV : e-mails de la catégorie sélectionnée">
+            Extraire
+          </button>
+          <span class="card-badge" id="churn-total-badge">—</span>
+        </div>
       </div>
 
-      <div class="churn-summary-row">
-        <div class="churn-stat-card">
+      <div class="churn-summary-row" id="churn-filter-row" role="tablist" aria-label="Filtrer par statut">
+        <div class="churn-stat-card churn-filter-active" data-churn-filter="all" role="tab" aria-selected="true" tabindex="0" title="Tous les utilisateurs">
+          <span class="badge" style="background:var(--text-3);color:var(--surface)">Tous</span>
+          <span class="churn-stat-val" id="churn-n-total" style="color:var(--text)">—</span>
+        </div>
+        <div class="churn-stat-card" data-churn-filter="actif" role="tab" aria-selected="false" tabindex="0" title="Uniquement actifs">
           <span class="badge badge-actif">Actifs</span>
           <span class="churn-stat-val" id="churn-n-actif" style="color:#34C759">—</span>
         </div>
-        <div class="churn-stat-card">
+        <div class="churn-stat-card" data-churn-filter="inactif" role="tab" aria-selected="false" tabindex="0" title="Uniquement inactifs">
           <span class="badge badge-inactif">Inactifs</span>
           <span class="churn-stat-val" id="churn-n-inactif" style="color:#FF9F0A">—</span>
         </div>
-        <div class="churn-stat-card">
+        <div class="churn-stat-card" data-churn-filter="risque" role="tab" aria-selected="false" tabindex="0" title="Uniquement à risque">
           <span class="badge badge-risque">Risque</span>
           <span class="churn-stat-val" id="churn-n-risque" style="color:#D97706">—</span>
         </div>
-        <div class="churn-stat-card">
+        <div class="churn-stat-card" data-churn-filter="churne" role="tab" aria-selected="false" tabindex="0" title="Uniquement churnés">
           <span class="badge badge-churne">Churnés</span>
           <span class="churn-stat-val" id="churn-n-churne" style="color:#FF453A">—</span>
         </div>
-        <div class="churn-stat-card">
+        <div class="churn-stat-card" data-churn-filter="insuffisant" role="tab" aria-selected="false" tabindex="0" title="Données insuffisantes">
           <span class="badge badge-insuffisant">Insuffisant</span>
           <span class="churn-stat-val" id="churn-n-insuffisant" style="color:#8E8E93">—</span>
         </div>
+      </div>
+      <div class="churn-podium-wrap">
+        <div class="churn-podium-header">
+          <span class="churn-podium-title" id="churn-podium-title">Podium d'activité</span>
+          <div class="churn-podium-period" id="churn-podium-period" role="group" aria-label="Période du podium">
+            <button type="button" class="churn-podium-period-btn" data-podium-period="week" onclick="setPodiumPeriod('week'); return false;">Semaine</button>
+            <button type="button" class="churn-podium-period-btn active" data-podium-period="month" onclick="setPodiumPeriod('month'); return false;">Mois</button>
+            <button type="button" class="churn-podium-period-btn" data-podium-period="all" onclick="setPodiumPeriod('all'); return false;">Tout</button>
+          </div>
+        </div>
+        <div class="churn-podium" id="churn-podium" aria-label="Podium top 3"></div>
+      </div>
+      <div id="churn-filter-hint" class="churn-filter-hint" aria-live="polite"></div>
+
+      <div class="churn-org-filter-wrap" id="churn-org-filter-wrap">
+        <label for="churn-org-select" class="churn-org-filter-label">Organisation :</label>
+        <select id="churn-org-select" class="churn-org-select" aria-label="Filtrer par organisation">
+          <option value="">Toutes</option>
+        </select>
+      </div>
+
+      <div class="churn-sort-bar" id="churn-sort-bar" role="group" aria-label="Trier les utilisateurs">
+        <span class="churn-sort-label">Trier par :</span>
+        <button type="button" class="churn-sort-btn" data-churn-sort="org" title="Organisation">Org</button>
+        <button type="button" class="churn-sort-btn" data-churn-sort="activity" title="Dernière activité">Activité</button>
+        <button type="button" class="churn-sort-btn" data-churn-sort="messages" title="Nombre de messages">Messages</button>
+        <button type="button" class="churn-sort-dir" id="churn-sort-dir-btn" title="Ordre croissant/décroissant">↓ Déc.</button>
       </div>
 
       <div id="churn-list">
@@ -600,6 +1029,7 @@ main {
   </main>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous"></script>
 <script>
 /* ─── THEME ─────────────────────────────────────────────────────────────────── */
 (function initTheme() {
@@ -653,26 +1083,68 @@ function applyChartTheme() {
 let AUTH_TOKEN = '';
 let tsChart, costChart, donutChart;
 
-/* ─── AUTH ───────────────────────────────────────────────────────────────────── */
+/* ─── AUTH (token mémorisé dans localStorage) ───────────────────────────────── */
+const LS_DASHBOARD_TOKEN = 'wonka_dashboard_auth';
+
+async function sessionLogin(token, persist) {
+  if (!token) return false;
+  const r = await fetch(
+    `${location.origin}/analytics/overview?token=${encodeURIComponent(token)}&period=30d`
+  );
+  if (!r.ok) return false;
+  AUTH_TOKEN = token;
+  if (persist) {
+    try {
+      localStorage.setItem(LS_DASHBOARD_TOKEN, token);
+    } catch (e) { /* quota / private mode */ }
+  }
+  const overviewData = await r.json();
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('login-error').style.display = 'none';
+  populateOverview(overviewData);
+  loadAll(/* skipOverview= */ true);
+  return true;
+}
+
 async function tryLogin() {
   const pw = document.getElementById('password-input').value.trim();
   if (!pw) return;
-  // Use period=30d so the auth check doubles as the first data fetch.
-  // The result is passed to loadAll() to avoid a duplicate overview request.
-  const r = await fetch(
-    `${location.origin}/analytics/overview?token=${encodeURIComponent(pw)}&period=30d`
-  );
-  if (r.ok) {
-    AUTH_TOKEN = pw;
-    const overviewData = await r.json();
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    // Populate KPIs immediately from the login response (no extra round-trip)
-    populateOverview(overviewData);
-    // Load everything else (timeseries, models, churn, health)
-    loadAll(/* skipOverview= */ true);
-  } else {
-    document.getElementById('login-error').style.display = 'block';
+  const ok = await sessionLogin(pw, true);
+  if (!ok) document.getElementById('login-error').style.display = 'block';
+}
+
+function logoutDashboard() {
+  try {
+    localStorage.removeItem(LS_DASHBOARD_TOKEN);
+  } catch (e) {}
+  AUTH_TOKEN = '';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  const inp = document.getElementById('password-input');
+  if (inp) {
+    inp.value = '';
+    inp.focus();
+  }
+}
+
+async function tryAutoLogin() {
+  let saved = '';
+  try {
+    saved = localStorage.getItem(LS_DASHBOARD_TOKEN) || '';
+  } catch (e) {
+    return;
+  }
+  if (!saved.trim()) return;
+  try {
+    const ok = await sessionLogin(saved.trim(), false);
+    if (!ok) {
+      try {
+        localStorage.removeItem(LS_DASHBOARD_TOKEN);
+      } catch (e2) {}
+    }
+  } catch (e) {
+    console.warn('tryAutoLogin', e);
   }
 }
 
@@ -686,6 +1158,8 @@ function populateOverview(d) {
 document.getElementById('password-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') tryLogin();
 });
+
+tryAutoLogin();
 
 /* ─── API ─────────────────────────────────────────────────────────────────────── */
 function apiUrl(path) {
@@ -707,6 +1181,7 @@ function fmtNum(n) {
   return n.toString();
 }
 function fmtCost(n)  { return n ? '$' + parseFloat(n).toFixed(2) : '$0.00'; }
+function fmtCostEur(n) { return n != null && n !== '' ? '€' + parseFloat(n).toFixed(2) : '€0.00'; }
 function fmtDate(s)  { return s ? s.slice(5) : ''; }
 
 function modelTag(name) {
@@ -736,7 +1211,7 @@ function destroyChart(c) { if (c) c.destroy(); }
 async function loadAll(skipOverview = false) {
   const period = document.getElementById('period-select').value;
   document.getElementById('ts-badge').textContent = period;
-  const tasks = [loadTimeseries(), loadModels(), loadChurn()];
+  const tasks = [loadTimeseries(), loadModels(), loadWonkaOrgUsage(), loadChurn()];
   if (!skipOverview) tasks.push(loadOverview());
   await Promise.all(tasks);
   loadHealth();
@@ -777,9 +1252,16 @@ async function loadTimeseries() {
       },
       options: {
         responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { display: false },
-          tooltip: { callbacks: { label: ctx => ' ' + fmtNum(ctx.raw) + ' tokens' } }
+          tooltip: {
+            mode: 'index', intersect: false,
+            callbacks: {
+              title: items => items[0]?.label || '',
+              label: ctx => ' ' + fmtNum(ctx.raw) + ' tokens'
+            }
+          }
         },
         scales: {
           x: { grid: { color: t.grid }, ticks: { maxTicksLimit: 10, color: t.text } },
@@ -806,9 +1288,16 @@ async function loadTimeseries() {
       },
       options: {
         responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { display: false },
-          tooltip: { callbacks: { label: ctx => ' $' + ctx.raw.toFixed(2) } }
+          tooltip: {
+            mode: 'index', intersect: false,
+            callbacks: {
+              title: items => items[0]?.label || '',
+              label: ctx => ' $' + parseFloat(ctx.raw).toFixed(2)
+            }
+          }
         },
         scales: {
           x: { grid: { display: false }, ticks: { maxTicksLimit: 8, color: t.text } },
@@ -827,29 +1316,34 @@ async function loadModels() {
 
     if (!data.length) {
       document.getElementById('model-count-badge').textContent = '0';
+      destroyChart(donutChart);
       document.getElementById('model-list').innerHTML =
-        '<div class="empty">Aucune donnée — lancez un sync</div>';
+        '<div class="empty">Aucune donnée — lancez un Sync pour charger les modèles Langfuse</div>';
       return;
     }
 
     document.getElementById('model-count-badge').textContent = data.length + ' modèles';
 
-    const families = {};
-    data.forEach(m => {
-      const f = modelFamily(m.model);
-      families[f] = (families[f] || 0) + (m.total_tokens || 0);
+    // Donut — tous les modèles avec tokens > 0
+    const DONUT_COLORS = ['#7C3AED','#34C759','#FF9F0A','#60A5FA','#F97316','#EC4899',
+                          '#A855F7','#06B6D4','#EF4444','#84CC16','#F59E0B','#8E8E93'];
+    const withTokens   = data.filter(m => (m.total_tokens || 0) > 0);
+    const donutLabels  = withTokens.map(m => {
+      const parts = (m.model || '').split('/');
+      return parts.length > 1 ? parts.slice(-1)[0] : (m.model || '—');
     });
+    const donutValues  = withTokens.map(m => m.total_tokens || 0);
 
     destroyChart(donutChart);
-    const t   = chartTheme();
+    const t    = chartTheme();
     const ctx3 = document.getElementById('donut-chart').getContext('2d');
     donutChart = new Chart(ctx3, {
       type: 'doughnut',
       data: {
-        labels: Object.keys(families),
+        labels: donutLabels,
         datasets: [{
-          data: Object.values(families),
-          backgroundColor: ['#7C3AED','#34C759','#FF9F0A','#60A5FA','#8E8E93'],
+          data: donutValues,
+          backgroundColor: DONUT_COLORS,
           borderWidth: 0, hoverOffset: 6,
         }]
       },
@@ -857,31 +1351,151 @@ async function loadModels() {
         responsive: true, maintainAspectRatio: false,
         cutout: '66%',
         plugins: {
-          legend: { position: 'bottom', labels: { padding: 14, boxWidth: 9, color: t.text } },
+          legend: { position: 'bottom', labels: { padding: 10, boxWidth: 9, color: t.text, font: { size: 11 } } },
           tooltip: { callbacks: { label: ctx => ' ' + fmtNum(ctx.raw) + ' tokens' } }
         }
       }
     });
 
-    const maxT = data[0]?.total_tokens || 1;
-    const html = data.slice(0, 20).map(m => `
+    // Top 5 — tokens + coût
+    const top5 = data.slice(0, 5);
+    const maxT  = top5[0]?.total_tokens || 1;
+    const html  = top5.map(m => {
+      const shortName = (() => { const p = (m.model||'').split('/'); return p.length > 1 ? p.slice(-1)[0] : m.model; })();
+      return `
       <div class="model-row">
-        <div>
+        <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px">
             <span class="tag ${modelTag(m.model)}">${modelFamily(m.model)}</span>
-            <span class="model-name">${m.model}</span>
+            <span class="model-name" title="${m.model}">${shortName}</span>
           </div>
           <div class="model-bar-track">
-            <div class="model-bar-fill" style="width:${Math.round((m.total_tokens/maxT)*100)}%"></div>
+            <div class="model-bar-fill" style="width:${Math.round(((m.total_tokens||0)/maxT)*100)}%"></div>
           </div>
         </div>
         <div class="model-stat">${fmtNum(m.total_tokens)}<small>tokens</small></div>
-        <div class="model-stat">${fmtNum(m.request_count)}<small>reqs</small></div>
         <div class="model-cost">${fmtCost(m.total_cost)}</div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
     document.getElementById('model-list').innerHTML = html;
   } catch(e) { console.error(e); }
+}
+
+function escAttr(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;');
+}
+
+/* ─── Usage par organisation Wonka (Mongo messages) ───────────────────────── */
+async function loadWonkaOrgUsage() {
+  const listEl = document.getElementById('wonka-org-list');
+  const badgeEl = document.getElementById('wonka-org-badge');
+  if (!listEl) return;
+  try {
+    const r = await fetch(apiUrl('/analytics/usage-by-wonka-org'));
+    let raw = {};
+    try {
+      raw = await r.json();
+    } catch (je) {
+      if (badgeEl) badgeEl.textContent = '—';
+      listEl.innerHTML =
+        '<div class="empty" style="color:var(--red)">Réponse serveur illisible (HTTP ' +
+        r.status +
+        '). Redémarrez le collector si la route est nouvelle.</div>';
+      return;
+    }
+    const data = Array.isArray(raw.data) ? raw.data : [];
+    const meta = raw.meta || {};
+    if (!r.ok) {
+      if (badgeEl) badgeEl.textContent = '—';
+      const msg =
+        meta.error ||
+        raw.error ||
+        (r.status === 404
+          ? 'Route introuvable — mettez à jour et redémarrez collector.py'
+          : 'HTTP ' + r.status);
+      listEl.innerHTML =
+        '<div class="empty" style="color:var(--red)">' + escAttr(String(msg)) + '</div>';
+      return;
+    }
+    if (meta.error === 'no_uri') {
+      if (badgeEl) badgeEl.textContent = '—';
+      listEl.innerHTML =
+        '<div class="empty">MongoDB requis — <code>WONKA_MONGO_URI</code> dans <code>.env</code>.</div>';
+      return;
+    }
+    if (meta.error) {
+      if (badgeEl) badgeEl.textContent = '—';
+      listEl.innerHTML =
+        '<div class="empty" style="color:var(--red)">' +
+        escAttr(String(meta.error)) +
+        '</div>';
+      return;
+    }
+    if (!data.length) {
+      if (badgeEl) badgeEl.textContent = '0 org';
+      listEl.innerHTML =
+        '<div class="empty">Aucun message sur cette période.</div>';
+      return;
+    }
+    if (badgeEl) {
+      badgeEl.textContent =
+        data.length + ' org · ' + (meta.users_with_messages || '—') + ' users';
+    }
+    let maxM = 1;
+    for (let i = 0; i < data.length; i++) {
+      const v = Number(data[i].messages) || 0;
+      if (v > maxM) maxM = v;
+    }
+    const head =
+      '<div class="org-wonka-row org-wonka-head">' +
+      '<span>Organisation</span>' +
+      '<span style="text-align:right">Messages</span>' +
+      '<span style="text-align:right">Conso (€)</span>' +
+      '<span style="text-align:right">Utilisateurs</span>' +
+      '</div>';
+    const rows = data
+      .map(r => {
+        const name = r.organization || '—';
+        const msgs = r.messages ?? 0;
+        const conso = '—';
+        const nu = r.users ?? 0;
+        const pct = Math.round((msgs / maxM) * 100);
+        return (
+          '<div class="org-wonka-row">' +
+          '<div style="min-width:0">' +
+          '<div class="org-key-name" title="' +
+          escAttr(name) +
+          '">' +
+          escAttr(name) +
+          '</div>' +
+          '<div class="model-bar-track" style="margin-top:8px">' +
+          '<div class="model-bar-fill" style="width:' +
+          pct +
+          '%"></div></div></div>' +
+          '<div class="org-wonka-messages">' +
+          fmtNum(msgs) +
+          '</div>' +
+          '<div style="text-align:right;font-family:var(--font-mono);font-size:12px">' + conso + '</div>' +
+          '<div class="org-wonka-users">' +
+          nu +
+          '</div>' +
+          '</div>'
+        );
+      })
+      .join('');
+    listEl.innerHTML = head + rows;
+  } catch (e) {
+    console.error('loadWonkaOrgUsage', e);
+    if (badgeEl) badgeEl.textContent = '—';
+    listEl.innerHTML =
+      '<div class="empty" style="color:var(--red)">' +
+      escAttr(e.message || String(e)) +
+      '</div>';
+  }
 }
 
 /* ─── HEALTH ──────────────────────────────────────────────────────────────────── */
@@ -902,6 +1516,561 @@ function statusLabel(s) {
   const m = { actif: 'Actif', inactif: 'Inactif', risque: 'Risque', churne: 'Churné', insuffisant: '—' };
   return m[s] || s;
 }
+function escChurn(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+let churnBuckets = null;
+let churnFilterKey = 'all';
+let churnSortKey = 'activity';
+let churnSortDir = 'desc';
+let podiumTimeFilter = 'month';
+let churnOrgFilter = '';
+let churnLoadError = null;
+
+const CHURN_FILTER_LABELS = {
+  all: 'Tous',
+  actif: 'Actifs',
+  inactif: 'Inactifs',
+  risque: 'Risque',
+  churne: 'Churnés',
+  insuffisant: 'Insuffisant',
+};
+
+function getChurnMessageCount(u) {
+  if (podiumTimeFilter === 'week') return u.traces_this_week != null ? u.traces_this_week : (u.total_traces || 0);
+  if (podiumTimeFilter === 'month') return u.traces_this_month != null ? u.traces_this_month : (u.total_traces || 0);
+  return u.total_traces != null ? u.total_traces : 0;
+}
+
+const CHURN_ORG_MIN_USERS = 5;
+
+function getChurnOrgList() {
+  if (!churnBuckets) return [];
+  const usersByOrg = Object.create(null);
+  const buckets = [churnBuckets.actif, churnBuckets.inactif, churnBuckets.risque, churnBuckets.churne, churnBuckets.insuffisant];
+  buckets.forEach(arr => {
+    (arr || []).forEach(u => {
+      const uid = (u.email || u.user_id || '').toString().trim().toLowerCase();
+      if (!uid) return;
+      (u.organizations || []).forEach(org => {
+        org = String(org).trim();
+        if (org) {
+          if (!usersByOrg[org]) usersByOrg[org] = new Set();
+          usersByOrg[org].add(uid);
+        }
+      });
+    });
+  });
+  return Object.entries(usersByOrg)
+    .filter(([, set]) => set.size >= CHURN_ORG_MIN_USERS)
+    .map(([name]) => name)
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function filterChurnByOrg(list, org) {
+  if (!org) return list;
+  return list.filter(u => (u.organizations || []).some(o => String(o).trim() === org));
+}
+
+function churnUsersForFilter(key) {
+  if (!churnBuckets) return [];
+  let list;
+  if (key === 'all') {
+    list = [
+      ...(churnBuckets.actif || []),
+      ...(churnBuckets.inactif || []),
+      ...(churnBuckets.risque || []),
+      ...(churnBuckets.churne || []),
+      ...(churnBuckets.insuffisant || []),
+    ];
+  } else {
+    list = churnBuckets[key] ? [...churnBuckets[key]] : [];
+  }
+  list = filterChurnByOrg(list, churnOrgFilter);
+  list = filterChurnByPeriod(list, podiumTimeFilter);
+  return sortChurnUsers(list);
+}
+
+function sortChurnUsers(list) {
+  const key = churnSortKey;
+  const dir = churnSortDir === 'asc' ? 1 : -1;
+  const cmp = (a, b) => {
+    let va, vb;
+    switch (key) {
+      case 'org':
+        va = (Array.isArray(a.organizations) && a.organizations[0]) ? a.organizations[0] : '';
+        vb = (Array.isArray(b.organizations) && b.organizations[0]) ? b.organizations[0] : '';
+        return dir * String(va).localeCompare(String(vb));
+      case 'activity':
+        va = a.last_seen || ''; vb = b.last_seen || '';
+        if (va !== vb) return dir * (va < vb ? -1 : 1);
+        va = a.days_since_last != null ? a.days_since_last : 999;
+        vb = b.days_since_last != null ? b.days_since_last : 999;
+        return dir * (va - vb);
+      case 'messages':
+        va = getChurnMessageCount(a);
+        vb = getChurnMessageCount(b);
+        return dir * (va - vb);
+      default:
+        return 0;
+    }
+  };
+  return [...list].sort(cmp);
+}
+
+function churnRankDisplay(rank) {
+  if (rank === 1) return '<span class="churn-medal churn-medal-gold" title="1er">🥇</span>';
+  if (rank === 2) return '<span class="churn-medal churn-medal-silver" title="2e">🥈</span>';
+  if (rank === 3) return '<span class="churn-medal churn-medal-bronze" title="3e">🥉</span>';
+  return '<span class="churn-rank">' + rank + '</span>';
+}
+
+function podiumInitials(u) {
+  const email = (u.email || u.user_id || '').toString();
+  const part = email.split('@')[0] || '';
+  if (part.length >= 2) return (part[0] + part[1]).toUpperCase();
+  if (part.length === 1) return part[0].toUpperCase();
+  return (u.user_id || '?').toString().slice(0, 2).toUpperCase();
+}
+
+function getPodiumWeekStart() {
+  const d = new Date();
+  const utc = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  const day = new Date(utc).getUTCDay();
+  const mondayOffset = day === 0 ? 6 : day - 1;
+  const mondayUtc = utc - mondayOffset * 24 * 60 * 60 * 1000;
+  return new Date(mondayUtc).toISOString().slice(0, 10);
+}
+function getPodiumMonthStart() {
+  const d = new Date();
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-01';
+}
+
+function lastSeenToDateStr(lastSeen) {
+  if (lastSeen == null || lastSeen === '') return '';
+  const s = String(lastSeen).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const t = typeof lastSeen === 'number' ? lastSeen : Date.parse(s);
+  if (!Number.isFinite(t)) return '';
+  return new Date(t).toISOString().slice(0, 10);
+}
+
+function filterChurnByPeriod(list, period) {
+  if (period === 'all') return list;
+  const weekStart = getPodiumWeekStart();
+  const monthStart = getPodiumMonthStart();
+  const lastSeenOk = (u) => {
+    const ls = lastSeenToDateStr(u.last_seen);
+    if (!ls) return false;
+    if (period === 'week') return ls >= weekStart;
+    if (period === 'month') return ls >= monthStart;
+    return true;
+  };
+  return list.filter(lastSeenOk);
+}
+
+function getChurnTop3(sortKey, sortDir, period) {
+  if (!churnBuckets) return [];
+  const all = [
+    ...(churnBuckets.actif || []),
+    ...(churnBuckets.inactif || []),
+    ...(churnBuckets.risque || []),
+    ...(churnBuckets.churne || []),
+    ...(churnBuckets.insuffisant || []),
+  ];
+  let filtered = filterChurnByOrg(all, churnOrgFilter);
+  filtered = filterChurnByPeriod(filtered, period);
+  const dir = sortDir === 'asc' ? 1 : -1;
+  const cmp = (a, b) => {
+    let va, vb;
+    switch (sortKey) {
+      case 'org':
+        va = (Array.isArray(a.organizations) && a.organizations[0]) ? a.organizations[0] : '';
+        vb = (Array.isArray(b.organizations) && b.organizations[0]) ? b.organizations[0] : '';
+        return dir * String(va).localeCompare(String(vb));
+      case 'activity':
+        va = a.last_seen || ''; vb = b.last_seen || '';
+        if (va !== vb) return dir * (va < vb ? -1 : 1);
+        va = a.days_since_last != null ? a.days_since_last : 999;
+        vb = b.days_since_last != null ? b.days_since_last : 999;
+        return dir * (va - vb);
+      case 'messages':
+        va = getChurnMessageCount(a);
+        vb = getChurnMessageCount(b);
+        return dir * (va - vb);
+      default:
+        return 0;
+    }
+  };
+  return [...filtered].sort(cmp).slice(0, 3);
+}
+
+function updateChurnPodiumTitle() {
+  const periodLabel = podiumTimeFilter === 'week' ? 'cette semaine' : (podiumTimeFilter === 'month' ? 'ce mois' : 'tout');
+  const sortLabel = churnSortKey === 'activity' ? 'activité' : (churnSortKey === 'messages' ? 'messages' : 'org');
+  const titleEl = document.getElementById('churn-podium-title');
+  if (titleEl) titleEl.textContent = 'Podium (top 3 par ' + sortLabel + ' — ' + periodLabel + ')';
+}
+
+function buildChurnPodiumHtml() {
+  const top3 = getChurnTop3(churnSortKey, churnSortDir, podiumTimeFilter);
+  updateChurnPodiumTitle();
+  if (!top3.length) {
+    return '<div class="churn-podium-empty">Aucun utilisateur actif sur la période sélectionnée.</div>';
+  }
+  const order = [top3[1], top3[0], top3[2]];
+  const classes = ['podium-2', 'podium-1', 'podium-3'];
+  return order.map((u, i) => {
+    const rank = i === 0 ? 2 : (i === 1 ? 1 : 3);
+    const name = u.email ? escChurn(u.email) : (u.user_id ? escChurn(u.user_id) : '—');
+    let stat = '';
+    if (churnSortKey === 'messages') {
+      stat = getChurnMessageCount(u) + ' messages';
+    } else if (churnSortKey === 'activity') {
+      stat = u.last_seen ? ('vu le ' + u.last_seen.slice(0, 10).split('-').reverse().join('/')) : '—';
+    } else {
+      stat = getChurnMessageCount(u) + ' messages';
+    }
+    return (
+      '<div class="churn-podium-place ' + classes[i] + '" role="listitem">' +
+      '<div class="churn-podium-avatar" aria-hidden="true">' + escChurn(podiumInitials(u)) + '</div>' +
+      '<span class="churn-podium-badge">#' + rank + '</span>' +
+      '<div class="churn-podium-name">' + name + '</div>' +
+      '<div class="churn-podium-stat">' + stat + '</div>' +
+      '</div>'
+    );
+  }).join('');
+}
+
+function updatePodiumPeriodUI() {
+  document.querySelectorAll('.churn-podium-period-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-podium-period') === podiumTimeFilter);
+  });
+}
+
+function setPodiumPeriod(period) {
+  if (!['week', 'month', 'all'].includes(period)) return;
+  podiumTimeFilter = period;
+  updatePodiumPeriodUI();
+  updateChurnFilterUI();
+  updateChurnPodium();
+  renderChurnList();
+}
+
+function updateChurnOrgFilterUI() {
+  const sel = document.getElementById('churn-org-select');
+  if (!sel) return;
+  const current = churnOrgFilter;
+  const orgs = churnBuckets ? getChurnOrgList() : [];
+  sel.innerHTML = '<option value="">Toutes</option>' + orgs.map(org => {
+    const selected = current === org ? ' selected' : '';
+    return '<option value="' + escChurn(org).replace(/"/g, '&quot;') + '"' + selected + '>' + escChurn(org) + '</option>';
+  }).join('');
+  sel.value = current;
+}
+
+function setChurnOrg(org) {
+  churnOrgFilter = org == null ? '' : String(org).trim();
+  updateChurnOrgFilterUI();
+  updateChurnFilterUI();
+  updateChurnPodium();
+  renderChurnList();
+}
+
+function updateChurnPodium() {
+  const el = document.getElementById('churn-podium');
+  if (!el) return;
+  updateChurnPodiumTitle();
+  if (!churnBuckets) {
+    el.innerHTML = '<div class="churn-podium-empty">Chargement…</div>';
+    return;
+  }
+  updatePodiumPeriodUI();
+  updateChurnOrgFilterUI();
+  el.innerHTML = buildChurnPodiumHtml();
+}
+
+function buildChurnRowsHtml(users) {
+  return users.map((u, i) => {
+    const rank = i + 1;
+    const email = u.email
+      ? escChurn(u.email)
+      : '<span class="churn-missing">—</span>';
+    const orgs = Array.isArray(u.organizations) && u.organizations.length
+      ? u.organizations.map(o => escChurn(o)).join(' · ')
+      : '<span class="churn-missing">—</span>';
+    const uid = escChurn(u.user_id || '');
+    return `
+      <div class="churn-user-row">
+        <div class="churn-rank-cell">${churnRankDisplay(rank)}</div>
+        <div class="churn-user-main">
+          <div class="churn-user-head">
+            <span class="badge badge-${u.status}">${statusLabel(u.status)}</span>
+          </div>
+          <div class="churn-email">${email}</div>
+          <div class="churn-org">${orgs}</div>
+          <div class="churn-userid">
+            <span class="churn-userid-label">User ID</span>
+            <code>${uid}</code>
+          </div>
+          <div class="churn-user-dates">
+            1er message : ${u.first_seen ? u.first_seen.slice(0,10) : '—'}
+            &nbsp;·&nbsp;
+            dernier : ${u.last_seen ? u.last_seen.slice(0,10) : '—'}
+          </div>
+        </div>
+        <div class="churn-user-metrics">
+          <div class="churn-num">
+            ${getChurnMessageCount(u)}
+            <small>messages</small>
+          </div>
+          <div class="churn-num">
+            ${u.days_since_last != null ? u.days_since_last + 'j' : '—'}
+            <small>inactivité</small>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function updateChurnFilterUI() {
+  const row = document.getElementById('churn-filter-row');
+  const hint = document.getElementById('churn-filter-hint');
+  if (row) {
+    row.querySelectorAll('.churn-stat-card').forEach(el => {
+      const k = el.getAttribute('data-churn-filter');
+      const on = k === churnFilterKey;
+      el.classList.toggle('churn-filter-active', on);
+      el.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
+  if (churnBuckets) {
+    const nTotal = churnUsersForFilter('all').length;
+    const nActif = churnUsersForFilter('actif').length;
+    const nInactif = churnUsersForFilter('inactif').length;
+    const nRisque = churnUsersForFilter('risque').length;
+    const nChurne = churnUsersForFilter('churne').length;
+    const nInsuffisant = churnUsersForFilter('insuffisant').length;
+    const elTotal = document.getElementById('churn-n-total');
+    const elActif = document.getElementById('churn-n-actif');
+    const elInactif = document.getElementById('churn-n-inactif');
+    const elRisque = document.getElementById('churn-n-risque');
+    const elChurne = document.getElementById('churn-n-churne');
+    const elInsuffisant = document.getElementById('churn-n-insuffisant');
+    if (elTotal != null) elTotal.textContent = nTotal;
+    if (elActif != null) elActif.textContent = nActif;
+    if (elInactif != null) elInactif.textContent = nInactif;
+    if (elRisque != null) elRisque.textContent = nRisque;
+    if (elChurne != null) elChurne.textContent = nChurne;
+    if (elInsuffisant != null) elInsuffisant.textContent = nInsuffisant;
+  }
+  if (hint && churnBuckets) {
+    const list = churnUsersForFilter(churnFilterKey);
+    const label = CHURN_FILTER_LABELS[churnFilterKey] || churnFilterKey;
+    if (churnFilterKey === 'all') {
+      hint.textContent = list.length
+        ? list.length + ' utilisateur(s) — cliquez une carte pour filtrer.'
+        : '';
+    } else {
+      hint.textContent = list.length + ' dans « ' + label + ' » — cliquez « Tous » pour tout afficher.';
+    }
+  }
+  const exBtn = document.getElementById('churn-export-csv-btn');
+  if (exBtn) {
+    if (!churnBuckets) {
+      exBtn.disabled = true;
+      exBtn.title = 'Chargement…';
+    } else {
+      const n = churnUsersForFilter(churnFilterKey).length;
+      exBtn.disabled = n === 0;
+      const lab = CHURN_FILTER_LABELS[churnFilterKey] || churnFilterKey;
+      exBtn.title = n
+        ? 'Télécharger un CSV (' + n + ' ligne' + (n > 1 ? 's' : '') + ') — « ' + lab + ' »'
+        : 'Aucun utilisateur dans cette catégorie';
+    }
+  }
+}
+
+function csvCell(v) {
+  const s = v == null || v === undefined ? '' : String(v);
+  if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function exportChurnCategoryCsv() {
+  if (!churnBuckets) {
+    showToast('Données non chargées', true);
+    return;
+  }
+  const users = churnUsersForFilter(churnFilterKey);
+  if (!users.length) {
+    showToast('Aucun utilisateur à exporter', true);
+    return;
+  }
+  const headers = [
+    'rang',
+    'email',
+    'user_id',
+    'statut',
+    'organisations',
+    'nb_messages',
+    'premier_message',
+    'dernier_message',
+    'jours_inactivite',
+  ];
+  const rows = users.map((u, i) =>
+    [
+      csvCell(i + 1),
+      csvCell(u.email || ''),
+      csvCell(u.user_id || ''),
+      csvCell(u.status || ''),
+      csvCell(Array.isArray(u.organizations) ? u.organizations.join(' | ') : ''),
+      csvCell(getChurnMessageCount(u)),
+      csvCell(u.first_seen ? String(u.first_seen).slice(0, 10) : ''),
+      csvCell(u.last_seen ? String(u.last_seen).slice(0, 10) : ''),
+      csvCell(u.days_since_last != null ? u.days_since_last : ''),
+    ].join(',')
+  );
+  const csv = '\ufeff' + headers.join(',') + '\n' + rows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const slug =
+    {
+      all: 'tous',
+      actif: 'actifs',
+      inactif: 'inactifs',
+      risque: 'risque',
+      churne: 'churnes',
+      insuffisant: 'insuffisant',
+    }[churnFilterKey] || churnFilterKey;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'wonka-churn-' + slug + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('CSV téléchargé (' + users.length + ' lignes)');
+}
+
+function renderChurnList() {
+  updateChurnPodium();
+  const el = document.getElementById('churn-list');
+  if (!el) return;
+  if (churnLoadError) {
+    el.innerHTML = '<div class="empty">' + churnLoadError + '</div>';
+    return;
+  }
+  if (!churnBuckets) {
+    el.innerHTML = '<div class="loading"><span class="spinner"></span> Chargement</div>';
+    return;
+  }
+  const allMerged = churnUsersForFilter('all');
+  if (!allMerged.length) {
+    const me = churnBuckets._mongo_enrich || {};
+    el.innerHTML =
+      '<div class="empty">' + (me.error
+        ? 'Impossible de charger les données : ' + escChurn(me.error)
+        : 'Aucun utilisateur avec messages dans MongoDB (collection <code>messages</code>).') + '</div>';
+    return;
+  }
+  const list = churnUsersForFilter(churnFilterKey);
+  if (!list.length) {
+    const label = CHURN_FILTER_LABELS[churnFilterKey] || churnFilterKey;
+    el.innerHTML = '<div class="empty">Aucun utilisateur dans la catégorie « ' + escChurn(label) + ' ».</div>';
+    return;
+  }
+  updateChurnSortUI();
+  el.innerHTML = buildChurnRowsHtml(list);
+}
+
+function updateChurnSortUI() {
+  document.querySelectorAll('.churn-sort-btn').forEach(btn => {
+    btn.classList.toggle('churn-sort-active', btn.getAttribute('data-churn-sort') === churnSortKey);
+  });
+  const dirBtn = document.getElementById('churn-sort-dir-btn');
+  if (dirBtn) {
+    dirBtn.classList.add('churn-sort-active');
+    dirBtn.textContent = churnSortDir === 'asc' ? '↑ Crois.' : '↓ Déc.';
+    dirBtn.title = churnSortDir === 'asc' ? 'Passer en ordre décroissant' : 'Passer en ordre croissant';
+  }
+}
+
+function setChurnSort(key) {
+  churnSortKey = key;
+  updateChurnSortUI();
+  renderChurnList();
+}
+
+function setChurnSortDir() {
+  churnSortDir = churnSortDir === 'asc' ? 'desc' : 'asc';
+  updateChurnSortUI();
+  renderChurnList();
+}
+
+function setChurnFilter(key) {
+  const valid = ['all', 'actif', 'inactif', 'risque', 'churne', 'insuffisant'];
+  if (!valid.includes(key)) key = 'all';
+  churnFilterKey = key;
+  updateChurnFilterUI();
+  renderChurnList();
+}
+
+(function initChurnSortClicks() {
+  const bar = document.getElementById('churn-sort-bar');
+  if (!bar) return;
+  bar.addEventListener('click', e => {
+    const btn = e.target.closest('.churn-sort-btn[data-churn-sort]');
+    if (btn) {
+      e.preventDefault();
+      setChurnSort(btn.getAttribute('data-churn-sort'));
+      return;
+    }
+    if (e.target.closest('#churn-sort-dir-btn')) {
+      e.preventDefault();
+      setChurnSortDir();
+    }
+  });
+})();
+
+(function initPodiumPeriodClicks() {
+  const wrap = document.getElementById('churn-podium-period');
+  if (!wrap) return;
+  wrap.addEventListener('click', e => {
+    const btn = e.target.closest('.churn-podium-period-btn[data-podium-period]');
+    if (!btn) return;
+    e.preventDefault();
+    setPodiumPeriod(btn.getAttribute('data-podium-period'));
+  });
+})();
+
+(function initChurnOrgSelect() {
+  const sel = document.getElementById('churn-org-select');
+  if (!sel) return;
+  sel.addEventListener('change', function() {
+    setChurnOrg(this.value || '');
+  });
+})();
+
+(function initChurnFilterClicks() {
+  const row = document.getElementById('churn-filter-row');
+  if (!row) return;
+  row.addEventListener('click', e => {
+    const card = e.target.closest('.churn-stat-card[data-churn-filter]');
+    if (!card || !row.contains(card)) return;
+    setChurnFilter(card.getAttribute('data-churn-filter'));
+  });
+  row.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const card = e.target.closest('.churn-stat-card[data-churn-filter]');
+    if (!card || !row.contains(card)) return;
+    e.preventDefault();
+    setChurnFilter(card.getAttribute('data-churn-filter'));
+  });
+})();
 
 async function loadChurn() {
   try {
@@ -909,63 +2078,204 @@ async function loadChurn() {
       `${location.origin}/analytics/churn-users?token=${encodeURIComponent(AUTH_TOKEN)}`
     ).then(r => r.json());
 
-    const nActif       = (d.actif       || []).length;
-    const nInactif     = (d.inactif     || []).length;
-    const nRisque      = (d.risque      || []).length;
-    const nChurne      = (d.churne      || []).length;
-    const nInsuffisant = (d.insuffisant || []).length;
+    document.getElementById('churn-total-badge').textContent = (d.total || 0) + ' users';
 
-    document.getElementById('churn-n-actif').textContent       = nActif;
-    document.getElementById('churn-n-inactif').textContent     = nInactif;
-    document.getElementById('churn-n-risque').textContent      = nRisque;
-    document.getElementById('churn-n-churne').textContent      = nChurne;
-    document.getElementById('churn-n-insuffisant').textContent = nInsuffisant;
-    document.getElementById('churn-total-badge').textContent   = (d.total || 0) + ' users';
+    churnLoadError = null;
+    churnBuckets = {
+      actif: d.actif || [],
+      inactif: d.inactif || [],
+      risque: d.risque || [],
+      churne: d.churne || [],
+      insuffisant: d.insuffisant || [],
+      _mongo_enrich: d.mongo_enrich || {},
+    };
+    updateChurnFilterUI();
+    renderChurnList();
 
-    const all = [
-      ...(d.actif       || []),
-      ...(d.inactif     || []),
-      ...(d.risque      || []),
-      ...(d.churne      || []),
-      ...(d.insuffisant || []),
-    ];
+  } catch(e) {
+    churnBuckets = null;
+    churnLoadError = 'Erreur chargement churn';
+    document.getElementById('churn-list').innerHTML =
+      '<div class="empty" style="color:var(--red)">Erreur chargement churn</div>';
+    updateChurnFilterUI();
+    console.error('loadChurn:', e);
+  }
+}
 
-    if (!all.length) {
-      document.getElementById('churn-list').innerHTML =
-        '<div class="empty">Aucun utilisateur Langfuse — lancez un sync</div>';
+/* ─── EXPORT PNG : captures réelles du DOM + collage (évite fadeUp / clone cassés) ─ */
+function exportStitchCanvases(parts, bgStr, gapPx) {
+  const list = parts.filter(Boolean);
+  if (!list.length) return null;
+  const maxW = Math.max(...list.map(p => p.width));
+  let h = 0;
+  list.forEach((p, i) => {
+    h += p.height + (i < list.length - 1 ? gapPx : 0);
+  });
+  const out = document.createElement('canvas');
+  out.width = maxW;
+  out.height = h;
+  const ctx = out.getContext('2d');
+  ctx.fillStyle =
+    bgStr && (bgStr.startsWith('#') || bgStr.startsWith('rgb')) ? bgStr : '#f5f5f7';
+  ctx.fillRect(0, 0, out.width, out.height);
+  let y = 0;
+  list.forEach((p, i) => {
+    const x = Math.floor((maxW - p.width) / 2);
+    ctx.drawImage(p, x, y);
+    y += p.height + (i < list.length - 1 ? gapPx : 0);
+  });
+  return out;
+}
+
+async function exportDashboardPng() {
+  if (typeof html2canvas !== 'function') {
+    alert('Capture indisponible. Rechargez la page (html2canvas).');
+    return;
+  }
+  const btn = document.getElementById('export-screenshot-btn');
+  if (btn) btn.disabled = true;
+  showToast('Capture PNG…');
+
+  const freeze = document.createElement('style');
+  freeze.id = 'export-png-freeze';
+  freeze.textContent = `
+    #app .kpi, #app .card, #app .col-2, #app .kpi-row {
+      animation: none !important;
+      animation-delay: 0s !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  `;
+
+  const listEl = document.getElementById('churn-list');
+  const hintEl = document.getElementById('churn-filter-hint');
+  const prev = {
+    list: listEl ? listEl.style.display : '',
+    hint: hintEl ? hintEl.style.display : '',
+  };
+
+  try {
+    const app = document.getElementById('app');
+    if (!app || app.offsetParent === null) {
+      showToast('Connectez-vous pour exporter.', true);
       return;
     }
 
-    const rows = all.map(u => `
-      <div class="churn-user-row">
-        <div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-            <span class="badge badge-${u.status}">${statusLabel(u.status)}</span>
-            <span class="churn-user-id">${u.user_id}</span>
-          </div>
-          <div class="churn-user-dates">
-            1ère trace : ${u.first_seen ? u.first_seen.slice(0,10) : '—'}
-            &nbsp;·&nbsp;
-            dernière : ${u.last_seen ? u.last_seen.slice(0,10) : '—'}
-          </div>
-        </div>
-        <div class="churn-num">
-          ${u.total_traces ?? '—'}
-          <small>traces</small>
-        </div>
-        <div class="churn-num">
-          ${u.days_since_last != null ? u.days_since_last + 'j' : '—'}
-          <small>inactivité</small>
-        </div>
-      </div>
-    `).join('');
-    document.getElementById('churn-list').innerHTML = rows;
+    document.head.appendChild(freeze);
+    if (listEl) listEl.style.display = 'none';
+    if (hintEl) hintEl.style.display = 'none';
 
-  } catch(e) {
-    document.getElementById('churn-list').innerHTML =
-      '<div class="empty" style="color:var(--red)">Erreur chargement churn</div>';
-    console.error('loadChurn:', e);
+    window.scrollTo(0, 0);
+    await new Promise(r => setTimeout(r, 100));
+
+    const main = app.querySelector('main');
+    const header = app.querySelector('header');
+    const kpiRow = main && main.querySelector('.kpi-row');
+    if (!kpiRow) throw new Error('Structure dashboard inattendue');
+
+    const cardTs = kpiRow.nextElementSibling;
+    const col2 = cardTs && cardTs.nextElementSibling;
+    const cardModels = document.getElementById('dash-card-models');
+    const cardWonkaOrg = document.getElementById('dash-card-wonka-org');
+    const cardChurn = document.getElementById('dash-card-churn');
+
+    const bgHex = isDark() ? '#000000' : '#f5f5f7';
+    const scale = 2;
+    const gap = Math.round(12 * scale);
+
+    function exportH2COnClone(clonedDoc) {
+      const st = clonedDoc.createElement('style');
+      st.textContent = isDark()
+        ? '.churn-stat-card.churn-filter-active{background:rgba(167,139,250,0.2)!important;box-shadow:inset 0 0 0 1px rgba(167,139,250,0.35)!important;border-color:#a78bfa!important;}'
+        : '.churn-stat-card.churn-filter-active{background:rgba(124,58,237,0.14)!important;box-shadow:inset 0 0 0 1px rgba(124,58,237,0.35)!important;border-color:#7c3aed!important;}';
+      (clonedDoc.head || clonedDoc.documentElement).appendChild(st);
+    }
+
+    async function snap(el) {
+      if (!el) return null;
+      el.scrollIntoView({ block: 'center', behavior: 'instant' });
+      await new Promise(r => setTimeout(r, 120));
+      return html2canvas(el, {
+        scale,
+        backgroundColor: bgHex,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        onclone: exportH2COnClone,
+      });
+    }
+
+    const blocks = [
+      header,
+      kpiRow,
+      cardTs,
+      col2,
+      cardModels,
+      cardWonkaOrg,
+      cardChurn,
+    ];
+    const shots = [];
+    for (let i = 0; i < blocks.length; i++) {
+      const c = await snap(blocks[i]);
+      if (c && c.width > 20 && c.height > 10) shots.push(c);
+    }
+
+    if (shots.length < 2) {
+      throw new Error('Captures insuffisantes — réessayez après chargement complet.');
+    }
+
+    const stitched = exportStitchCanvases(shots, bgHex, gap);
+    if (!stitched) throw new Error('Assemblage impossible');
+
+    await new Promise((resolve, reject) => {
+      stitched.toBlob(
+        b => {
+          if (!b) {
+            reject(new Error('toBlob'));
+            return;
+          }
+          const url = URL.createObjectURL(b);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download =
+            'wonka-analytics-' + new Date().toISOString().slice(0, 10) + '.png';
+          a.click();
+          URL.revokeObjectURL(url);
+          resolve();
+        },
+        'image/png',
+        1
+      );
+    });
+    showToast('PNG téléchargé');
+  } catch (e) {
+    console.error('exportDashboardPng', e);
+    showToast('Erreur capture : ' + (e.message || String(e)), true);
+  } finally {
+    if (listEl) listEl.style.display = prev.list;
+    if (hintEl) hintEl.style.display = prev.hint;
+    document.getElementById('export-png-freeze')?.remove();
+    if (btn) btn.disabled = false;
   }
+}
+
+/* ─── TOAST ───────────────────────────────────────────────────────────────────── */
+function showToast(msg, isError = false) {
+  let t = document.getElementById('sync-toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'sync-toast';
+    t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);' +
+      'padding:10px 18px;border-radius:10px;font-size:13px;font-weight:500;' +
+      'z-index:9999;transition:opacity 0.3s;pointer-events:none;white-space:nowrap;';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.background = isError ? '#ef4444' : 'var(--accent)';
+  t.style.color = '#fff';
+  t.style.opacity = '1';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.style.opacity = '0'; }, 4000);
 }
 
 /* ─── SYNC ────────────────────────────────────────────────────────────────────── */
@@ -984,11 +2294,20 @@ async function doSync() {
       body: JSON.stringify({ period }),
     });
     if (r.ok) {
+      const result = await r.json().catch(() => ({}));
       await loadAll();
+      // Build sync summary
+      const parts = [];
+      if (result.requesty?.keys != null) parts.push(`Requesty: ${result.requesty.keys} clés`);
+      if (typeof result.lf_models === 'number') parts.push(`Langfuse modèles: ${result.lf_models}`);
+      else if (result.lf_models?.error) parts.push(`Langfuse modèles: erreur (${result.lf_models.error})`);
+      if (typeof result.lf_users === 'number') parts.push(`Langfuse users: ${result.lf_users}`);
+      else if (result.lf_users?.error) parts.push(`Langfuse users: erreur`);
+      if (parts.length) showToast('✓ ' + parts.join(' · '));
     } else {
       const err = await r.json().catch(() => ({}));
       console.error('Sync failed:', r.status, err);
-      alert(`Sync échoué (${r.status}): ${err.error || 'erreur inconnue'}`);
+      showToast(`Sync échoué (${r.status}): ${err.error || 'erreur inconnue'}`, true);
     }
   } catch(e) {
     console.error('Sync error:', e);

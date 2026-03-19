@@ -4,19 +4,20 @@ Requesty + Langfuse Analytics Collector
 ========================================
 Sources:
   - Requesty API  -> requesty_daily  (cost, tokens, real request count)
-  - Langfuse /traces -> lf_users      (user churn analysis)
+  - Langfuse /traces -> lf_users      (export / by-user ; churn = Mongo messages)
   - Langfuse /observations -> model_daily (per-model breakdown)
 
 Run locally:
-  pip install requests flask flask-cors
-  cp .env.example .env   # fill in your keys
+  pip install -r requirements.txt
+  # Optionnel churn enrich : .env avec WONKA_MONGO_URI (+ WONKA_MONGO_DB=wonkachat-prod)
+  # Sync Langfuse users par morceaux (LF_TRACES_CHUNK_PAGES, LF_TRACES_SLEEP) pour ne pas surcharger l'API
   python collector.py --key $REQUESTY_KEY --auto --port 7842
 
 Deploy:
   git add collector.py && git commit -m "..." && git push vps main
 """
 
-import argparse, json, os, sqlite3, sys, time, threading, logging, socket
+import argparse, json, os, re, sqlite3, sys, time, threading, logging, socket
 from datetime import datetime, timedelta, timezone
 
 def utcnow():
@@ -28,6 +29,12 @@ from functools import wraps
 import requests
 from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 # ---------------------------------------------------------------------------
 # Config
@@ -112,6 +119,342 @@ def get_meta(conn, k, default=None):
     return r["value"] if r else default
 
 # ---------------------------------------------------------------------------
+# Wonka MongoDB — email + orgs pour les user_id = ObjectId Langfuse/Wonka
+# ---------------------------------------------------------------------------
+_mongo_client = None
+
+def _mongo_churn_meta(configured=False, requested=0, matched=0, error=None):
+    return {
+        "configured": configured,
+        "requested": requested,
+        "matched": matched,
+        "error": error,
+    }
+
+
+def _get_mongo_client():
+    """Retourne (client, err). err est None si OK."""
+    global _mongo_client
+    uri = (os.environ.get("WONKA_MONGO_URI") or "").strip()
+    if not uri:
+        return None, "no_uri"
+    try:
+        from pymongo import MongoClient
+    except ImportError:
+        return None, "pymongo_missing"
+    if _mongo_client is None:
+        client_kw = {"serverSelectionTimeoutMS": 10000}
+        try:
+            import certifi
+            client_kw["tlsCAFile"] = certifi.where()
+        except ImportError:
+            pass
+        if os.environ.get("WONKA_MONGO_TLS_INSECURE", "").strip().lower() in ("1", "true", "yes"):
+            client_kw["tlsAllowInvalidCertificates"] = True
+        _mongo_client = MongoClient(uri, **client_kw)
+    return _mongo_client, None
+
+
+def _dt_iso_utc(dt):
+    if not dt or not isinstance(dt, datetime):
+        return str(dt or "")
+    if dt.tzinfo:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+
+
+def wonka_churn_rows_from_messages():
+    """
+    Agrège la collection messages par user : first_seen, last_seen, total_traces (nombre de messages).
+    Retourne (liste de dicts compatibles churn, meta).
+    """
+    client, mc_err = _get_mongo_client()
+    if mc_err == "no_uri":
+        return [], {**_mongo_churn_meta(False, 0, 0, None), "source": "mongodb_messages"}
+    if mc_err == "pymongo_missing":
+        return [], {
+            **_mongo_churn_meta(True, 0, 0, "pymongo_missing"),
+            "source": "mongodb_messages",
+        }
+
+    db_name = (os.environ.get("WONKA_MONGO_DB") or "wonkachat-prod").strip()
+    db = client[db_name]
+    match = {"user": {"$exists": True, "$ne": None}, "createdAt": {"$exists": True}}
+    lb = (os.environ.get("WONKA_CHURN_MESSAGES_LOOKBACK_DAYS") or "").strip()
+    if lb.isdigit() and int(lb) > 0:
+        since = datetime.now(timezone.utc) - timedelta(days=int(lb))
+        match["createdAt"] = {"$gte": since}
+    if os.environ.get("WONKA_CHURN_USER_MESSAGES_ONLY", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        match["isCreatedByUser"] = True
+
+    max_ms = int(os.environ.get("WONKA_CHURN_MAX_TIME_MS", "180000") or 180000)
+    max_ms = max(30000, min(600000, max_ms))
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    days_since_monday = now.weekday()
+    week_start = (now - timedelta(days=days_since_monday)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    pipeline = [
+        {"$match": match},
+        {
+            "$addFields": {
+                "_uid": {
+                    "$toLower": {
+                        "$trim": {
+                            "input": {
+                                "$convert": {
+                                    "input": "$user",
+                                    "to": "string",
+                                    "onError": "",
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {"$match": {"_uid": {"$ne": ""}}},
+        {
+            "$group": {
+                "_id": "$_uid",
+                "first_seen": {"$min": "$createdAt"},
+                "last_seen": {"$max": "$createdAt"},
+                "total_traces": {"$sum": 1},
+                "traces_this_week": {
+                    "$sum": {"$cond": [{"$gte": ["$createdAt", week_start]}, 1, 0]}
+                },
+                "traces_this_month": {
+                    "$sum": {"$cond": [{"$gte": ["$createdAt", month_start]}, 1, 0]}
+                },
+                "consumption": {"$sum": {"$ifNull": ["$cost", 0]}},
+            }
+        },
+        {"$sort": {"last_seen": -1}},
+    ]
+    try:
+        rows = []
+        for doc in db.messages.aggregate(
+            pipeline, allowDiskUse=True, maxTimeMS=max_ms
+        ):
+            uid = doc.get("_id")
+            if not uid:
+                continue
+            rows.append(
+                {
+                    "user_id": uid,
+                    "first_seen": _dt_iso_utc(doc.get("first_seen")),
+                    "last_seen": _dt_iso_utc(doc.get("last_seen")),
+                    "total_traces": int(doc.get("total_traces") or 0),
+                    "traces_this_week": int(doc.get("traces_this_week") or 0),
+                    "traces_this_month": int(doc.get("traces_this_month") or 0),
+                    "consumption": float(doc.get("consumption") or 0),
+                }
+            )
+        meta = {
+            **_mongo_churn_meta(True, len(rows), len(rows), None),
+            "source": "mongodb_messages",
+            "users_from_messages": len(rows),
+        }
+        if lb.isdigit():
+            meta["lookback_days"] = int(lb)
+        log.info("Churn Mongo messages: %s utilisateurs agrégés", len(rows))
+        return rows, meta
+    except Exception as e:
+        log.warning("Churn messages aggregate: %s", e)
+        return [], {
+            **_mongo_churn_meta(True, 0, 0, str(e)[:280]),
+            "source": "mongodb_messages",
+        }
+
+
+def wonka_messages_per_user_in_days(days: int):
+    """
+    Messages Mongo par utilisateur sur les N derniers jours (createdAt >= since).
+    Même filtres optionnels que le churn (WONKA_CHURN_USER_MESSAGES_ONLY).
+    """
+    try:
+        days = int(days)
+    except (TypeError, ValueError):
+        days = 30
+    days = max(1, min(days, 365))
+    client, mc_err = _get_mongo_client()
+    if mc_err == "no_uri":
+        return [], {**_mongo_churn_meta(False, 0, 0, None), "error": "no_uri", "period_days": days}
+    if mc_err == "pymongo_missing":
+        return [], {**_mongo_churn_meta(True, 0, 0, "pymongo_missing"), "period_days": days}
+
+    db_name = (os.environ.get("WONKA_MONGO_DB") or "wonkachat-prod").strip()
+    db = client[db_name]
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    match = {"user": {"$exists": True, "$ne": None}, "createdAt": {"$gte": since}}
+    if os.environ.get("WONKA_CHURN_USER_MESSAGES_ONLY", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        match["isCreatedByUser"] = True
+
+    max_ms = int(os.environ.get("WONKA_CHURN_MAX_TIME_MS", "180000") or 180000)
+    max_ms = max(30000, min(600000, max_ms))
+    pipeline = [
+        {"$match": match},
+        {
+            "$addFields": {
+                "_uid": {
+                    "$toLower": {
+                        "$trim": {
+                            "input": {
+                                "$convert": {
+                                    "input": "$user",
+                                    "to": "string",
+                                    "onError": "",
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {"$match": {"_uid": {"$ne": ""}}},
+        {
+            "$group": {
+                "_id": "$_uid",
+                "first_seen": {"$min": "$createdAt"},
+                "last_seen": {"$max": "$createdAt"},
+                "total_traces": {"$sum": 1},
+                "consumption": {"$sum": {"$ifNull": ["$cost", 0]}},
+            }
+        },
+        {"$sort": {"last_seen": -1}},
+    ]
+    try:
+        rows = []
+        for doc in db.messages.aggregate(
+            pipeline, allowDiskUse=True, maxTimeMS=max_ms
+        ):
+            uid = doc.get("_id")
+            if not uid:
+                continue
+            rows.append(
+                {
+                    "user_id": uid,
+                    "first_seen": _dt_iso_utc(doc.get("first_seen")),
+                    "last_seen": _dt_iso_utc(doc.get("last_seen")),
+                    "total_traces": int(doc.get("total_traces") or 0),
+                    "consumption": float(doc.get("consumption") or 0),
+                }
+            )
+        meta = {
+            **_mongo_churn_meta(True, len(rows), len(rows), None),
+            "source": "mongodb_messages_period",
+            "period_days": days,
+            "users_with_messages": len(rows),
+        }
+        return rows, meta
+    except Exception as e:
+        log.warning("wonka_messages_per_user_in_days: %s", e)
+        return [], {
+            **_mongo_churn_meta(True, 0, 0, str(e)[:280]),
+            "period_days": days,
+        }
+
+
+def wonka_user_profiles_by_ids(user_ids):
+    """
+    Pour chaque user_id valide en ObjectId, retourne
+    ( { user_id_lower: { email, organizations } }, meta ).
+
+    Clés en minuscules pour matcher Langfuse (casse variable).
+    Nécessite WONKA_MONGO_URI ; sinon profils vides et meta.configured=False.
+    """
+    uri = (os.environ.get("WONKA_MONGO_URI") or "").strip()
+    if not user_ids:
+        return {}, _mongo_churn_meta(bool(uri), 0, 0, None)
+
+    try:
+        from bson import ObjectId
+        from bson.errors import InvalidId
+    except ImportError:
+        log.warning("pymongo absent — pip install pymongo pour email/org churn")
+        oid_pat = re.compile(r"^[0-9a-fA-F]{24}$")
+        n = sum(1 for uid in user_ids if uid and oid_pat.match(str(uid).strip()))
+        return {}, _mongo_churn_meta(bool(uri), n, 0, "pymongo_missing")
+
+    oids, seen = [], set()
+    for uid in user_ids:
+        if not uid:
+            continue
+        try:
+            oid = ObjectId(str(uid).strip())
+        except InvalidId:
+            continue
+        if oid not in seen:
+            seen.add(oid)
+            oids.append(oid)
+    requested = len(oids)
+    if not oids:
+        return {}, _mongo_churn_meta(bool(uri), 0, 0, None)
+
+    client, mc_err = _get_mongo_client()
+    if mc_err == "no_uri":
+        log.info("Churn enrich: WONKA_MONGO_URI absent — email/org désactivés")
+        return {}, _mongo_churn_meta(False, requested, 0, None)
+    if mc_err == "pymongo_missing":
+        return {}, _mongo_churn_meta(bool(uri), requested, 0, "pymongo_missing")
+
+    db_name = (os.environ.get("WONKA_MONGO_DB") or "wonkachat-prod").strip()
+    try:
+        db = client[db_name]
+        pipeline = [
+            {"$match": {"_id": {"$in": oids}}},
+            {
+                "$lookup": {
+                    "from": "organizations",
+                    "localField": "organizationMemberships.organizationId",
+                    "foreignField": "_id",
+                    "as": "_orgs",
+                }
+            },
+            {
+                "$project": {
+                    "email": 1,
+                    "org_names": {
+                        "$map": {
+                            "input": "$_orgs",
+                            "as": "o",
+                            "in": "$$o.name",
+                        }
+                    },
+                }
+            },
+        ]
+        out = {}
+        for doc in db.users.aggregate(pipeline, allowDiskUse=False):
+            key = str(doc["_id"]).lower()
+            names = [n for n in (doc.get("org_names") or []) if n]
+            out[key] = {
+                "email": doc.get("email") or None,
+                "organizations": names,
+            }
+        matched = len(out)
+        if matched < requested:
+            log.info(
+                "Churn enrich Mongo: %s profils sur %s userIds (absents de users?)",
+                matched,
+                requested,
+            )
+        return out, _mongo_churn_meta(True, requested, matched, None)
+    except Exception as e:
+        log.warning("Wonka Mongo churn enrich: %s", e)
+        err = str(e)[:240]
+        return {}, _mongo_churn_meta(True, requested, 0, err)
+
+# ---------------------------------------------------------------------------
 # Requesty API client
 # ---------------------------------------------------------------------------
 class RequestyClient:
@@ -192,40 +535,75 @@ def sync_requesty(conn, client, period="30d"):
     return {"records": len(rows), "keys": len(keys)}
 
 # ---------------------------------------------------------------------------
-# Sync: Langfuse /traces -> lf_users + lf_sessions
+# Sync: Langfuse /api/public/traces -> lf_users
+#
+# Stratégie pour ne pas surcharger Langfuse :
+#   - Sync par morceaux (chunked) : chaque run fait au plus N pages (défaut 15),
+#     sauvegarde la progression (lf_users_full_next_page). Le run suivant reprend.
+#   - Incrémental (<48h) : peu de pages, fenêtre 2j.
+#   - Délai entre pages (défaut 1.5s), backoff sur 429/503.
 # ---------------------------------------------------------------------------
-def sync_lf_users(conn, days=30):
-    """
-    Paginate Langfuse /api/public/traces (last N days only).
-    Aggregates first_seen/last_seen/trace_count per user_id.
-    Also captures session data from trace.sessionId.
-    """
-    if not LF_PUBLIC or not LF_SECRET:
-        log.info("  Langfuse users: skipped (no credentials)")
-        return 0
 
-    session = requests.Session()
-    session.auth = (LF_PUBLIC, LF_SECRET)
-    cutoff = (utcnow() - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    now   = utcnow().isoformat()
-    page  = 1
-    limit = 100
-    # Safety cap: max pages to fetch per sync to avoid hammering a self-hosted
-    # Langfuse that has no server-side date filter on /traces.
-    # At 100 traces/page, 50 pages = 5 000 traces max — enough for 30 days.
-    MAX_PAGES = 50
-    users    = {}  # user_id -> {first, last, count}
-    sessions = {}  # session_id -> {user_id, created_at, count}
+def _lf_traces_page_size():
+    return max(10, min(100, int(os.environ.get("LF_TRACES_PAGE_SIZE", "50"))))
 
-    while page <= MAX_PAGES:
+
+def _lf_traces_sleep_s():
+    return max(0.3, min(30.0, float(os.environ.get("LF_TRACES_SLEEP", "1.5"))))
+
+
+def _lf_traces_chunk_pages():
+    return max(5, min(50, int(os.environ.get("LF_TRACES_CHUNK_PAGES", "15"))))
+
+
+def _paginate_traces(lf_session, from_ts, cutoff_90, start_page, max_pages, page_size, sleep_s):
+    """Génère des dicts {user_id: {first, last, count}} page par page.
+    Gère 429/503 avec backoff pour ne pas saturer Langfuse.
+    """
+    users: dict = {}
+    page = start_page
+    consecutive_errors = 0
+    MAX_ERRORS = 5
+    MAX_RATE_LIMIT_RETRIES = 3
+
+    while page < start_page + max_pages:
         try:
-            r = session.get(
-                f"{LF_HOST}/api/public/traces",
-                params={"page": page, "limit": limit},
-                timeout=60
-            )
-            log.info(f"  Langfuse users: page {page}/{MAX_PAGES} ({r.status_code})")
+            params = {"page": page, "limit": page_size}
+            if from_ts:
+                params["fromTimestamp"] = from_ts
+            r = lf_session.get(f"{LF_HOST}/api/public/traces", params=params, timeout=60)
+
+            if r.status_code == 429 or r.status_code in (502, 503):
+                wait_s = 30
+                if r.status_code == 429:
+                    ra = r.headers.get("Retry-After")
+                    if ra and ra.isdigit():
+                        wait_s = min(120, int(ra))
+                for _ in range(MAX_RATE_LIMIT_RETRIES):
+                    log.warning(
+                        "  Langfuse traces page %s: %s — attente %ss avant retry",
+                        page, r.status_code, wait_s,
+                    )
+                    time.sleep(wait_s)
+                    r = lf_session.get(
+                        f"{LF_HOST}/api/public/traces", params=params, timeout=60
+                    )
+                    if r.status_code not in (429, 502, 503):
+                        break
+                    wait_s = min(120, wait_s * 2)
+                if r.status_code in (429, 502, 503):
+                    consecutive_errors += 1
+                    if consecutive_errors >= MAX_ERRORS:
+                        log.error(
+                            "  Langfuse traces: %s erreurs consécutives, abandon",
+                            MAX_ERRORS,
+                        )
+                        break
+                    time.sleep(consecutive_errors * 10)
+                    continue
+
             r.raise_for_status()
+            consecutive_errors = 0
             traces = r.json().get("data", [])
             if not traces:
                 break
@@ -234,170 +612,303 @@ def sync_lf_users(conn, days=30):
             for t in traces:
                 uid = t.get("userId")
                 ts  = t.get("timestamp", "")
-                # Langfuse retourne les traces les plus récentes en premier.
-                # On s'arrête dès qu'on dépasse le cutoff pour ne pas
-                # parcourir l'historique complet (protection Langfuse).
-                if ts and ts[:19] < cutoff[:19]:
+                if cutoff_90 and ts and ts < cutoff_90:
                     stop = True
                     break
                 if uid:
                     if uid not in users:
                         users[uid] = {"first": ts, "last": ts, "count": 0}
                     else:
-                        if ts < users[uid]["first"]: users[uid]["first"] = ts
-                        if ts > users[uid]["last"]:  users[uid]["last"]  = ts
+                        if ts and ts < users[uid]["first"]:
+                            users[uid]["first"] = ts
+                        if ts and ts > users[uid]["last"]:
+                            users[uid]["last"] = ts
                     users[uid]["count"] += 1
 
-                sid = t.get("sessionId")
-                if sid:
-                    if sid not in sessions:
-                        sessions[sid] = {"user_id": uid or "", "created_at": ts, "count": 0}
-                    elif ts and ts < sessions[sid]["created_at"]:
-                        sessions[sid]["created_at"] = ts
-                    sessions[sid]["count"] += 1
+            yield page, users, stop or len(traces) < page_size
 
-            if stop or len(traces) < limit:
+            if stop or len(traces) < page_size:
                 break
             page += 1
-            time.sleep(0.5)  # be gentle with self-hosted instance
+            time.sleep(sleep_s)
 
         except Exception as e:
-            log.error(f"  Langfuse users error (page {page}): {e}")
-            break
+            consecutive_errors += 1
+            log.error("  Langfuse traces page %s: %s", page, e)
+            if consecutive_errors >= MAX_ERRORS:
+                break
+            time.sleep(consecutive_errors * 5)
 
-    if users:
+
+def _load_lf_users_from_db(conn):
+    """Charge lf_users depuis la DB en dict {user_id: {first, last, count}} pour merge chunked."""
+    rows = conn.execute(
+        "SELECT user_id, first_seen, last_seen, total_traces FROM lf_users"
+    ).fetchall()
+    return {
+        r["user_id"]: {
+            "first": r["first_seen"] or "",
+            "last": r["last_seen"] or "",
+            "count": int(r["total_traces"] or 0),
+        }
+        for r in rows
+    }
+
+
+def _merge_lf_users(existing: dict, new_batch: dict):
+    """Fusionne new_batch dans existing (first=min, last=max, count+=)."""
+    for uid, v in new_batch.items():
+        if uid not in existing:
+            existing[uid] = {"first": v["first"], "last": v["last"], "count": v["count"]}
+        else:
+            if v["first"] and (not existing[uid]["first"] or v["first"] < existing[uid]["first"]):
+                existing[uid]["first"] = v["first"]
+            if v["last"] and (not existing[uid]["last"] or v["last"] > existing[uid]["last"]):
+                existing[uid]["last"] = v["last"]
+            existing[uid]["count"] += v["count"]
+
+
+def _upsert_lf_users(conn, users: dict, now_str: str, replace=False):
+    """INSERT OR REPLACE (full) ou upsert-merge (incrémental)."""
+    if not users:
+        return
+    if replace:
         conn.executemany("""
             INSERT OR REPLACE INTO lf_users
               (user_id, first_seen, last_seen, total_traces, updated_at)
             VALUES (?,?,?,?,?)
-        """, [(uid, v["first"], v["last"], v["count"], now) for uid, v in users.items()])
-    if sessions:
+        """, [(uid, v["first"], v["last"], v["count"], now_str) for uid, v in users.items()])
+    else:
         conn.executemany("""
-            INSERT OR REPLACE INTO lf_sessions
-              (session_id, user_id, created_at, trace_count, updated_at)
+            INSERT INTO lf_users (user_id, first_seen, last_seen, total_traces, updated_at)
             VALUES (?,?,?,?,?)
-        """, [(sid, v["user_id"], v["created_at"], v["count"], now) for sid, v in sessions.items()])
+            ON CONFLICT(user_id) DO UPDATE SET
+              first_seen   = MIN(first_seen, excluded.first_seen),
+              last_seen    = MAX(last_seen,  excluded.last_seen),
+              total_traces = total_traces + excluded.total_traces,
+              updated_at   = excluded.updated_at
+        """, [(uid, v["first"], v["last"], v["count"], now_str) for uid, v in users.items()])
     conn.commit()
-    set_meta(conn, "last_lf_users_sync", now)
-    log.info(f"  Langfuse users: {len(users)} users, {len(sessions)} sessions")
-    return len(users)
+
+
+def sync_lf_users(conn, days=90):
+    """
+    Point d'entrée pour le sync users. Retourne toujours le count actuel en DB.
+
+    - Sync récent (<48h) : incrémental (quelques pages, léger).
+    - Sinon : sync par morceaux (chunked) — un seul chunk par appel (défaut 15 pages),
+      progression sauvegardée ; le prochain appel reprend où on en était.
+    """
+    if not LF_PUBLIC or not LF_SECRET:
+        log.info("  Langfuse users: skipped (no credentials)")
+        return 0
+
+    now = utcnow()
+    now_str = now.isoformat()
+    cutoff_90 = (now - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    page_size = _lf_traces_page_size()
+    sleep_s = _lf_traces_sleep_s()
+    chunk_pages = _lf_traces_chunk_pages()
+
+    last_sync_str = get_meta(conn, "last_lf_users_sync")
+    next_page_str = get_meta(conn, "lf_users_full_next_page")
+
+    # -- Incrémental si sync récent (<48h) et pas de full en cours -------------
+    if last_sync_str and not next_page_str:
+        try:
+            hours_ago = (now - datetime.fromisoformat(last_sync_str[:19])).total_seconds() / 3600
+            if hours_ago < 48:
+                from_ts = (now - timedelta(days=2)).strftime("%Y-%m-%dT00:00:00Z")
+                log.info(
+                    "  Langfuse users: incrémental (depuis 48h, %.1fh depuis dernier sync)",
+                    hours_ago,
+                )
+                lf_session = requests.Session()
+                lf_session.auth = (LF_PUBLIC, LF_SECRET)
+                users: dict = {}
+                for _, u, _ in _paginate_traces(
+                    lf_session, from_ts, None, 1, 20, page_size, 0.3
+                ):
+                    users = u
+                _upsert_lf_users(conn, users, now_str, replace=False)
+                purged = conn.execute(
+                    "DELETE FROM lf_users WHERE last_seen < ?",
+                    [(now - timedelta(days=90)).strftime("%Y-%m-%d")],
+                ).rowcount
+                conn.commit()
+                set_meta(conn, "last_lf_users_sync", now_str)
+                total = conn.execute("SELECT COUNT(*) FROM lf_users").fetchone()[0]
+                log.info(
+                    "  Langfuse users: incrémental OK — %s mis à jour, %s en DB, %s purgés",
+                    len(users), total, purged,
+                )
+                return total
+        except Exception:
+            pass
+
+    # -- Sync par morceaux (full ou suite du full) ----------------------------
+    start_page = 1
+    if next_page_str:
+        try:
+            start_page = int(next_page_str)
+        except ValueError:
+            start_page = 1
+
+    log.info(
+        "  Langfuse users: chunk sync (page %s, %s pages max, %s traces/page)",
+        start_page, chunk_pages, page_size,
+    )
+    lf_session = requests.Session()
+    lf_session.auth = (LF_PUBLIC, LF_SECRET)
+    existing = _load_lf_users_from_db(conn)
+    last_page = start_page
+    done_fully = False
+    for page, users_batch, done in _paginate_traces(
+        lf_session, None, cutoff_90, start_page, chunk_pages, page_size, sleep_s
+    ):
+        _merge_lf_users(existing, users_batch)
+        last_page = page
+        if done:
+            done_fully = True
+            break
+
+    _upsert_lf_users(conn, existing, now_str, replace=True)
+    if done_fully:
+        set_meta(conn, "last_lf_users_sync", now_str)
+        conn.execute("DELETE FROM meta WHERE key = ?", ["lf_users_full_next_page"])
+        purged = conn.execute(
+            "DELETE FROM lf_users WHERE last_seen < ?", [cutoff_90[:10]]
+        ).rowcount
+        conn.commit()
+        total = conn.execute("SELECT COUNT(*) FROM lf_users").fetchone()[0]
+        log.info(
+            "  Langfuse users: chunk sync TERMINÉ — %s users, %s purgés",
+            total, purged,
+        )
+    else:
+        set_meta(conn, "lf_users_full_next_page", str(last_page + 1))
+        conn.commit()
+        total = conn.execute("SELECT COUNT(*) FROM lf_users").fetchone()[0]
+        log.info(
+            "  Langfuse users: chunk sync — page %s → %s users (prochain run: page %s)",
+            last_page, total, last_page + 1,
+        )
+    return total
 
 # ---------------------------------------------------------------------------
-# Sync: Langfuse /observations -> model_daily
+# Sync: Langfuse /metrics/daily -> model_daily  (incremental + purge 90j)
 # ---------------------------------------------------------------------------
 def sync_lf_models(conn, days=30):
     """
-    Paginate Langfuse /api/public/observations?type=GENERATION.
-    Commits after each page (checkpoint pattern — resumable on error).
-    Uses fromStartTime to limit to last N days.
-    Retries up to 3x on 5xx errors.
+    Incremental sync using /api/public/metrics/daily (1 requête, pré-agrégé).
 
-    Data flow:
-      Langfuse /api/public/observations?type=GENERATION
-        -> {model, startTime, usage:{input,output,total}, calculatedTotalCost}
-        -> model_daily (INSERT OR REPLACE, one row per model+date)
+    Stratégie :
+      1. Cherche la date la plus récente en DB.
+      2. Si up-to-date (aujourd'hui) : ne fait pas de requête réseau, juste purge.
+      3. Sinon : fetch uniquement les jours manquants (depuis max_date-1j jusqu'à aujourd'hui).
+      4. Première fois / données trop vieilles : fetch 90 jours complets.
+      5. Après insert : purge les lignes > 90 jours.
+
+    → Évite de refetcher 90 jours entiers à chaque sync.
     """
     if not LF_PUBLIC or not LF_SECRET:
         log.info("  Langfuse models: skipped (no credentials)")
         return 0
 
-    session   = requests.Session()
+    session    = requests.Session()
     session.auth = (LF_PUBLIC, LF_SECRET)
-    cutoff    = (utcnow() - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    now       = utcnow().isoformat()
-    page      = 1
-    limit     = 50
-    total_obs = 0
+    now        = utcnow()
+    now_str    = now.isoformat()
+    today      = now.strftime("%Y-%m-%d")
+    cutoff_90  = (now - timedelta(days=90)).strftime("%Y-%m-%d")
 
-    # Clear existing records for this period before re-fetching — prevents
-    # double-counting on repeated syncs (the ON CONFLICT +accumulate pattern
-    # is only safe within a single sync run, not across multiple runs).
-    conn.execute("DELETE FROM model_daily WHERE date >= ?", [cutoff[:10]])
+    # -- Trouver la dernière date stockée ------------------------------------
+    latest_row    = conn.execute("SELECT MAX(date) as d FROM model_daily").fetchone()
+    latest_stored = latest_row["d"] if latest_row and latest_row["d"] else None
+
+    if latest_stored and latest_stored >= today:
+        log.info(f"  Langfuse models: already up-to-date ({latest_stored}), skipping fetch")
+        purged = conn.execute("DELETE FROM model_daily WHERE date < ?", [cutoff_90]).rowcount
+        conn.commit()
+        if purged:
+            log.info(f"  Langfuse models: purged {purged} rows (> 90 days)")
+        return conn.execute("SELECT COUNT(DISTINCT model) FROM model_daily").fetchone()[0]
+
+    # -- Déterminer la fenêtre à fetcher -------------------------------------
+    if latest_stored and latest_stored > cutoff_90:
+        # Incrémental : depuis la veille du dernier jour connu
+        fetch_from = (
+            datetime.strptime(latest_stored, "%Y-%m-%d") - timedelta(days=1)
+        ).strftime("%Y-%m-%dT00:00:00Z")
+        log.info(f"  Langfuse models: incremental fetch from {latest_stored} (stored) → today")
+    else:
+        # Première fois ou données périmées : fetch 90 jours complets
+        fetch_from = (now - timedelta(days=90)).strftime("%Y-%m-%dT00:00:00Z")
+        log.info(f"  Langfuse models: full fetch (90 days, latest_stored={latest_stored})")
+
+    fetch_to = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # -- Fetch avec 3 tentatives ---------------------------------------------
+    data = None
+    for attempt in range(3):
+        try:
+            r = session.get(
+                f"{LF_HOST}/api/public/metrics/daily",
+                params={"fromTimestamp": fetch_from, "toTimestamp": fetch_to},
+                timeout=30
+            )
+            if r.status_code in (502, 503):
+                wait = (attempt + 1) * 5
+                log.warning(f"  Langfuse metrics {r.status_code} (attempt {attempt+1}/3), retry in {wait}s")
+                time.sleep(wait)
+                continue
+            r.raise_for_status()
+            data  = r.json().get("data", [])
+            dates = [d.get("date", "?")[:10] for d in data]
+            log.info(f"  Langfuse metrics: {len(data)} days → {dates[:5]}{'...' if len(dates) > 5 else ''}")
+            break
+        except Exception as e:
+            log.warning(f"  Langfuse metrics error (attempt {attempt+1}/3): {e}")
+            time.sleep(5)
+
+    if data is None:
+        log.error("  Langfuse metrics: failed after 3 attempts, keeping existing data")
+        return conn.execute("SELECT COUNT(DISTINCT model) FROM model_daily").fetchone()[0]
+
+    # -- Upsert (INSERT OR REPLACE pour écraser les jours partiels) ----------
+    rows = []
+    for day in data:
+        date = day.get("date", "")[:10]
+        if not date:
+            continue
+        for m in day.get("usage", []):
+            model = m.get("model") or "unknown"
+            rows.append((
+                f"{model}|{date}", date, model,
+                int(m.get("inputUsage")        or 0),
+                int(m.get("outputUsage")       or 0),
+                int(m.get("totalUsage")        or 0),
+                float(m.get("totalCost")       or 0),
+                int(m.get("countObservations") or 0),
+            ))
+
+    if rows:
+        conn.executemany("""
+            INSERT OR REPLACE INTO model_daily
+              (id, date, model, input_tokens, output_tokens, total_tokens, cost, request_count)
+            VALUES (?,?,?,?,?,?,?,?)
+        """, rows)
+        log.info(f"  Langfuse models: {len(rows)} rows upserted")
+
+    # -- Purge > 90 jours ----------------------------------------------------
+    purged = conn.execute("DELETE FROM model_daily WHERE date < ?", [cutoff_90]).rowcount
     conn.commit()
-
-    while True:
-        # Retry loop for 5xx errors
-        data = None
-        for attempt in range(3):
-            try:
-                r = session.get(
-                    f"{LF_HOST}/api/public/observations",
-                    params={
-                        "type": "GENERATION",
-                        "page": page,
-                        "limit": limit,
-                        "fromStartTime": cutoff,
-                    },
-                    timeout=60
-                )
-                if r.status_code in (502, 503):
-                    wait = (attempt + 1) * 3
-                    log.warning(f"  Langfuse obs {r.status_code} (attempt {attempt+1}/3), wait {wait}s")
-                    time.sleep(wait)
-                    continue
-                r.raise_for_status()
-                data = r.json().get("data", [])
-                break
-            except Exception as e:
-                log.warning(f"  Langfuse obs error (attempt {attempt+1}/3): {e}")
-                time.sleep(3)
-
-        if data is None:
-            log.error(f"  Langfuse obs: failed after 3 attempts on page {page}, stopping")
-            break
-        if not data:
-            break
-
-        # Aggregate this page into model_daily
-        agg = {}
-        for obs in data:
-            model = obs.get("model") or "unknown"
-            ts    = obs.get("startTime", "")
-            date  = ts[:10] if ts else "unknown"
-            key   = f"{model}|{date}"
-            usage = obs.get("usage") or {}
-            inp   = int(usage.get("input") or obs.get("promptTokens") or 0)
-            out   = int(usage.get("output") or obs.get("completionTokens") or 0)
-            tot   = int(usage.get("total") or obs.get("totalTokens") or inp + out)
-            cost  = float(obs.get("calculatedTotalCost") or 0)
-            if key not in agg:
-                agg[key] = {"model": model, "date": date,
-                            "inp": 0, "out": 0, "tot": 0, "cost": 0.0, "count": 0}
-            agg[key]["inp"]   += inp
-            agg[key]["out"]   += out
-            agg[key]["tot"]   += tot
-            agg[key]["cost"]  += cost
-            agg[key]["count"] += 1
-
-        # Checkpoint: commit this page's data immediately
-        if agg:
-            conn.executemany("""
-                INSERT INTO model_daily
-                  (id, date, model, input_tokens, output_tokens, total_tokens, cost, request_count)
-                VALUES (?,?,?,?,?,?,?,?)
-                ON CONFLICT(id) DO UPDATE SET
-                  input_tokens  = input_tokens  + excluded.input_tokens,
-                  output_tokens = output_tokens + excluded.output_tokens,
-                  total_tokens  = total_tokens  + excluded.total_tokens,
-                  cost          = cost          + excluded.cost,
-                  request_count = request_count + excluded.request_count
-            """, [
-                (f"{v['model']}|{v['date']}", v["date"], v["model"],
-                 v["inp"], v["out"], v["tot"], v["cost"], v["count"])
-                for v in agg.values()
-            ])
-            conn.commit()
-        total_obs += len(data)
-
-        log.info(f"  Langfuse models: page {page}, {total_obs} obs processed")
-        if len(data) < limit:
-            break
-        page += 1
-        time.sleep(0.5)  # be gentle with the server
+    if purged:
+        log.info(f"  Langfuse models: purged {purged} rows (> 90 days)")
 
     n_models = conn.execute("SELECT COUNT(DISTINCT model) FROM model_daily").fetchone()[0]
-    set_meta(conn, "last_lf_models_sync", now)
-    log.info(f"  Langfuse models: {n_models} distinct models, {total_obs} observations")
+    set_meta(conn, "last_lf_models_sync", now_str)
+    log.info(f"  Langfuse models: {n_models} distinct models total in DB")
     return n_models
 
 # ---------------------------------------------------------------------------
@@ -574,47 +1085,167 @@ def create_app(conn, client, auth_token=None, html_path=None):
         """, [s]).fetchall()
         return jsonify(R(rows))
 
+    # ── Usage par organisation Wonka (Mongo messages + profils users) ─────
+    @app.route("/analytics/usage-by-wonka-org")
+    @auth
+    def usage_by_wonka_org():
+        from collections import defaultdict
+
+        try:
+            period = request.args.get("period", "30d")
+            try:
+                ddays = int(period[:-1]) if str(period).endswith("d") else 30
+            except (ValueError, TypeError):
+                ddays = 30
+            ddays = max(1, min(ddays, 365))
+
+            rows, msg_meta = wonka_messages_per_user_in_days(ddays)
+            err = msg_meta.get("error")
+            if err == "no_uri":
+                return jsonify(
+                    {
+                        "data": [],
+                        "meta": {
+                            **msg_meta,
+                            "hint": "Ajoutez WONKA_MONGO_URI dans .env",
+                        },
+                    }
+                )
+            if err and err != "no_uri":
+                return jsonify({"data": [], "meta": msg_meta})
+
+            seen_uid = set()
+            uids_unique = []
+            for r in rows:
+                u = str(r.get("user_id") or "").strip().lower()
+                if u and u not in seen_uid:
+                    seen_uid.add(u)
+                    uids_unique.append(r["user_id"])
+
+            profiles = {}
+            prof_matched = 0
+            prof_requested = 0
+            chunk_sz = 200
+            for i in range(0, len(uids_unique), chunk_sz):
+                chunk = uids_unique[i : i + chunk_sz]
+                p, pm = wonka_user_profiles_by_ids(chunk)
+                profiles.update(p)
+                prof_matched += int(pm.get("matched") or 0)
+                prof_requested += int(pm.get("requested") or 0)
+
+            org_msg = defaultdict(float)
+            org_consumption = defaultdict(float)
+            org_users = defaultdict(set)
+            for r in rows:
+                uid = str(r["user_id"]).strip().lower()
+                m = float(r["total_traces"] or 0)
+                conso = float(r.get("consumption") or 0)
+                orgs = (profiles.get(uid) or {}).get("organizations") or []
+                if not orgs:
+                    key = "Sans organisation"
+                    org_msg[key] += m
+                    org_consumption[key] += conso
+                    org_users[key].add(uid)
+                else:
+                    share = m / len(orgs)
+                    share_conso = conso / len(orgs)
+                    for o in orgs:
+                        label = o if o else "Sans nom"
+                        org_msg[label] += share
+                        org_consumption[label] += share_conso
+                        org_users[label].add(uid)
+
+            # Min. 4 membres actifs sur la période ; tri décroissant par messages
+            data = [
+                {
+                    "organization": k,
+                    "messages": round(v, 1),
+                    "consumption": round(org_consumption.get(k, 0), 2),
+                    "users": len(org_users[k]),
+                }
+                for k, v in sorted(org_msg.items(), key=lambda x: -x[1])
+                if len(org_users[k]) >= 4
+            ]
+            return jsonify(
+                {
+                    "data": data,
+                    "meta": {
+                        "period_days": ddays,
+                        "users_with_messages": len(rows),
+                        "organizations_count": len(data),
+                        "profiles_matched": prof_matched,
+                        "profiles_requested": prof_requested,
+                    },
+                }
+            )
+        except Exception as e:
+            log.exception("usage_by_wonka_org")
+            return jsonify(
+                {
+                    "data": [],
+                    "meta": {"error": str(e)[:500]},
+                }
+            )
+
     # ── Churn users ───────────────────────────────────────────────────────
     @app.route("/analytics/churn-users")
     @auth
     def churn_users():
-        rows = conn.execute("""
-            SELECT user_id, first_seen, last_seen, total_traces
-            FROM lf_users ORDER BY last_seen DESC
-        """).fetchall()
-        now    = utcnow()
+        rows, msg_meta = wonka_churn_rows_from_messages()
+        profiles, prof_meta = wonka_user_profiles_by_ids(
+            [r["user_id"] for r in rows]
+        )
+        mongo_enrich = {
+            **msg_meta,
+            "profiles_matched": prof_meta.get("matched", 0),
+            "profiles_requested": prof_meta.get("requested", 0),
+        }
+        if prof_meta.get("error") and not mongo_enrich.get("error"):
+            mongo_enrich["profile_error"] = prof_meta["error"]
+
+        now = utcnow()
         MIN_TRACES = 5
         actif, inactif, risque, churne, insuffisant = [], [], [], [], []
         for r in rows:
             d = dict(r)
+            if "consumption" not in d or d["consumption"] is None:
+                d["consumption"] = 0.0
+            uid_key = (d.get("user_id") or "").strip().lower()
+            p = profiles.get(uid_key, {})
+            d["email"] = p.get("email")
+            d["organizations"] = p.get("organizations") or []
             try:
-                days_ago = (now - datetime.fromisoformat(d["last_seen"][:19])).days
+                ls = d["last_seen"]
+                if ls.endswith("Z"):
+                    ls = ls[:-1]
+                days_ago = (now - datetime.fromisoformat(ls[:19])).days
             except Exception:
                 days_ago = 999
             d["days_since_last"] = days_ago
             traces = d.get("total_traces") or 0
             if traces < MIN_TRACES:
-                # Pas assez de données pour classifier
-                d["status"] = "insuffisant"; insuffisant.append(d)
+                d["status"] = "insuffisant"
+                insuffisant.append(d)
             elif days_ago <= 3:
-                # Actif dans les 3 derniers jours
-                d["status"] = "actif"; actif.append(d)
+                d["status"] = "actif"
+                actif.append(d)
             elif days_ago <= 7:
-                # Actif dans les 7 derniers jours → inactif
-                d["status"] = "inactif"; inactif.append(d)
+                d["status"] = "inactif"
+                inactif.append(d)
             elif days_ago <= 10:
-                # Zone grise 7–10 jours
-                d["status"] = "risque"; risque.append(d)
+                d["status"] = "risque"
+                risque.append(d)
             else:
-                # Pas actif depuis plus de 10 jours → churné
-                d["status"] = "churne"; churne.append(d)
+                d["status"] = "churne"
+                churne.append(d)
         return jsonify({
-            "actif":       actif,
-            "inactif":     inactif,
-            "risque":      risque,
-            "churne":      churne,
+            "actif": actif,
+            "inactif": inactif,
+            "risque": risque,
+            "churne": churne,
             "insuffisant": insuffisant,
-            "total":       len(rows),
+            "total": len(rows),
+            "mongo_enrich": mongo_enrich,
         })
 
     # ── By user (raw list) ────────────────────────────────────────────────
@@ -672,6 +1303,9 @@ def main():
     client = RequestyClient(args.key)
 
     # Initial sync on startup (non-fatal — server starts even if API is unreachable)
+    # Requesty + models: rapides, inline.
+    # Langfuse users: toujours en background pour ne pas bloquer le démarrage
+    #   (Langfuse /traces peut être lent ou down, les retries prendraient 2+ min).
     log.info("Initial sync...")
     days = int(args.period[:-1]) if args.period.endswith("d") else 30
     try:
@@ -679,13 +1313,11 @@ def main():
     except Exception as e:
         log.warning(f"Requesty sync failed on startup: {e}")
     try:
-        sync_lf_users(conn)
-    except Exception as e:
-        log.warning(f"Langfuse users sync failed on startup: {e}")
-    try:
         sync_lf_models(conn, days=days)
     except Exception as e:
         log.warning(f"Langfuse models sync failed on startup: {e}")
+    # Users en arrière-plan — ne bloque pas Flask
+    threading.Thread(target=sync_lf_users, args=(conn,), daemon=True).start()
 
     # Auto-sync background thread
     if args.auto:
