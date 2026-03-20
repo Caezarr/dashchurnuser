@@ -11,10 +11,8 @@ Run locally:
   pip install -r requirements.txt
   # Optionnel churn enrich : .env avec WONKA_MONGO_URI (+ WONKA_MONGO_DB=wonkachat-prod)
   # Sync Langfuse users par morceaux (LF_TRACES_CHUNK_PAGES, LF_TRACES_SLEEP) pour ne pas surcharger l'API
-  python collector.py --key $REQUESTY_KEY --auto --port 7842
-
-Deploy:
-  git add collector.py && git commit -m "..." && git push vps main
+  python collector.py --auto --port 7842   # clé via REQUESTY_KEY dans .env
+  # ou : python collector.py --key ... --auto --port 7842
 """
 
 import argparse, json, os, re, sqlite3, sys, time, threading, logging, socket
@@ -32,6 +30,9 @@ from flask_cors import CORS
 
 try:
     from dotenv import load_dotenv
+    _here = Path(__file__).resolve().parent
+    load_dotenv(_here / ".env")
+    load_dotenv(_here.parent / ".env")
     load_dotenv()
 except ImportError:
     pass
@@ -943,9 +944,13 @@ def create_app(conn, client, auth_token=None, html_path=None):
         """Return ISO timestamp from ?period=30d or ?since=<iso> param."""
         period = request.args.get("period", f"{default_days}d")
         if period.endswith("d"):
-            days = int(period[:-1])
+            try:
+                days = int(period[:-1])
+            except (ValueError, TypeError):
+                days = default_days
         else:
             days = default_days
+        days = max(1, min(days, 365))
         return (utcnow() - timedelta(days=days)).isoformat()
 
     def since_date(default_days=30):
@@ -1291,13 +1296,16 @@ def create_app(conn, client, auth_token=None, html_path=None):
 # ---------------------------------------------------------------------------
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--key",        required=True, help="Requesty API key")
+    p.add_argument("--key",        default=os.environ.get("REQUESTY_KEY"),
+                   help="Requesty API key (default: env REQUESTY_KEY, ex. depuis .env)")
     p.add_argument("--db",         default=str(DB_PATH))
     p.add_argument("--port",       type=int, default=PORT)
     p.add_argument("--period",     default="30d")
     p.add_argument("--auto",       action="store_true", help="Enable hourly auto-sync")
     p.add_argument("--auth-token", default=None, dest="auth_token")
     args = p.parse_args()
+    if not args.key:
+        p.error("Clé Requesty manquante : définis REQUESTY_KEY dans .env ou passe --key")
 
     conn   = init_db(Path(args.db))
     client = RequestyClient(args.key)

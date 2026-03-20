@@ -1461,7 +1461,7 @@ async function loadWonkaOrgUsage() {
       .map(r => {
         const name = r.organization || '—';
         const msgs = r.messages ?? 0;
-        const conso = '—';
+        const conso = r.consumption != null && r.consumption !== '' ? fmtCostEur(r.consumption) : '—';
         const nu = r.users ?? 0;
         const pct = Math.round((msgs / maxM) * 100);
         return (
@@ -2307,7 +2307,10 @@ async function doSync() {
     } else {
       const err = await r.json().catch(() => ({}));
       console.error('Sync failed:', r.status, err);
-      showToast(`Sync échoué (${r.status}): ${err.error || 'erreur inconnue'}`, true);
+      const msg = r.status === 429
+        ? (err.error || 'Sync déjà en cours, réessayez dans quelques secondes.')
+        : `Sync échoué (${r.status}): ${err.error || 'erreur inconnue'}`;
+      showToast(msg, true);
     }
   } catch(e) {
     console.error('Sync error:', e);

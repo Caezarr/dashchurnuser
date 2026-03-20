@@ -84,5 +84,5 @@ fi
 echo ""
 echo "================================================"
 echo "  Results: $PASS passed, $FAIL failed"
-[ $FAIL -eq 0 ] && echo "  All good - ready to deploy!" || echo "  Fix failures before deploying."
+[ $FAIL -eq 0 ] && echo "  All good." || echo "  Fix failures before continuing."
 echo ""
